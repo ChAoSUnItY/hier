@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteTargetsManager">
+    <targets>
+      <target name="WSL - Ubuntu-22.04" type="wsl" uuid="ae0ba1c6-2006-4c88-9412-c6b3975c3057">
+        <config>
+          <option name="distributionMsId" value="Ubuntu-22.04" />
+          <option name="projectRootOnTarget" value="{exitCode=0, timeout=false, cancelled=false, stdout=/mnt/c/Users/chaos/AppData/Local/JetBrains/Toolbox/apps/RustRover/ch-0/232.9921.46/jbr/bin&#10;, stderr=}/hier" />
+        </config>
+        <ContributedStateBase type="RsLanguageRuntime">
+          <config>
+            <option name="cargoPath" value="/home/chaosunity/.cargo/bin/cargo" />
+            <option name="cargoVersion" value="1.71.0 (cfd3bbd8f 2023-06-08)" />
+            <option name="rustcPath" value="/home/chaosunity/.cargo/bin/rustc" />
+            <option name="rustcVersion" value="1.71.0 (8ede3aae2 2023-07-12)" />
+          </config>
+        </ContributedStateBase>
+      </target>
+    </targets>
+  </component>
+</project>
