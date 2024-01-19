@@ -7,3 +7,7 @@ edition = "2021"
 
 [dependencies]
 jni = { version = "0.21.1", features = ["invocation"] }
+graphviz-rust = { version = "0.7.0", optional = true }
+
+[features]
+graph = ["dep:graphviz-rust"]
