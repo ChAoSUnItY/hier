@@ -32,7 +32,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        java_version: ['6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21'] # Versions below 6 are not availableP
+        java_version: ['8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21'] # Versions below 8 are not available
       fail-fast: true
     runs-on: ${{ matrix.os }}
     steps:
