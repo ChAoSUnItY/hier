@@ -160,6 +160,7 @@ version = "0.1.0"
 dependencies = [
  "graphviz-rust",
  "jni",
+ "lazy_static",
 ]
 
 [[package]]
