@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum JvmVersion {
+pub enum JavaVersion {
     V0,
     V1,
     V2,
@@ -29,7 +29,7 @@ pub enum JvmVersion {
     Invalid(String),
 }
 
-impl From<String> for JvmVersion {
+impl From<String> for JavaVersion {
     /// This conversion is compatible for "java.version" and "java.specification.version"
     /// poperties.
     fn from(value: String) -> Self {
