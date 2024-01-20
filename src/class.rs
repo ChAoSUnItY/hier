@@ -4,6 +4,7 @@ use std::sync::{Mutex, OnceLock};
 use jni::descriptors::Desc;
 use jni::objects::{GlobalRef, JClass, JObjectArray, JValueGen, JValueOwned};
 use jni::JNIEnv;
+use jni::strings::JavaStr;
 
 use crate::version::JavaVersion;
 
@@ -189,11 +190,9 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         let class_name = self
             .call_method(class.as_ref(), "getName", "()Ljava/lang/String;", &[])
             .and_then(JValueOwned::l)?;
-        unsafe {
-            self.get_string_unchecked((&class_name).into())
-                .map(|java_str| java_str.into())
-        }
-        .map(|name: String| name.replace(".", "/"))
+
+        self.get_string((&class_name).into())
+            .map(|name| Into::<String>::into(name).replace(".", "/"))
     }
 
     fn interfaces<'other_local, T>(&mut self, class: T) -> jni::errors::Result<Vec<JClass<'local>>>
