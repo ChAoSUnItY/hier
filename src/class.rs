@@ -66,15 +66,23 @@ fn jclass_from_instance<'local>(
 }
 
 /// Frees jclass cache.
-pub fn free_jclass_cache() {
+fn free_jclass_cache() {
     class_cache().lock().unwrap().clear();
 }
 
+/// The additional definition for [JNIEnv], used for define
+/// [JClass] caching (see [HierExt::lookup_class] and [HierExt::free_lookup])
+/// and other useful class-related functions.
 pub trait HierExt<'local> {
+    /// Gets the java version currently the jni environment is running on.
     fn get_java_version(&mut self) -> jni::errors::Result<JavaVersion>;
 
+    /// Lookups class from given class path, if class is found, then caches and returns
+    /// it.
     fn lookup_class(&mut self, class_path: &str) -> jni::errors::Result<GlobalRef>;
 
+    /// Lookups superclass from given class instance, if superclass is found, then
+    /// caches and returns, otherwise, returns [None].
     fn lookup_superclass<'other_local, T>(
         &mut self,
         class: T,
@@ -82,22 +90,41 @@ pub trait HierExt<'local> {
     where
         T: Desc<'local, JClass<'other_local>>;
 
+    /// Frees the class cache.
     fn free_lookup(&mut self) {
         free_jclass_cache();
     }
 
+    /// Determines if the given class is an interface type.
     fn is_interface<'other_local, T>(&mut self, class: T) -> jni::errors::Result<bool>
     where
         T: Desc<'local, JClass<'other_local>>;
 
+    /// Returns the given class' class path.
     fn class_name<'other_local, T>(&mut self, class: T) -> jni::errors::Result<String>
     where
         T: Desc<'local, JClass<'other_local>>;
 
+    /// Returns the given class' derived interfaces.
+    ///
+    /// # Example
+    ///
+    /// Assuming `java/lang/Integer` has the following declaration:
+    /// ```java
+    /// public class Integer extends Number implements Comparable<Integer> {
+    ///     // ...
+    /// }
+    /// ```
+    ///
+    /// Calling [HierExt::interfaces] returns `[JClass("java/lang/Comparable")]`,
+    /// notice that this does collects interfaces derived by superclasses.
     fn interfaces<'other_local, T>(&mut self, class: T) -> jni::errors::Result<Vec<JClass<'local>>>
     where
         T: Desc<'local, JClass<'other_local>>;
 
+    /// Returns the given 2 class' most common superclass.
+    ///
+    /// If 1 of the classes is interface, then returns `JClass("java/lang/Object")`.
     fn common_superclass<'other_local_1: 'local, 'other_local_2: 'local, T, U>(
         &mut self,
         class1: T,
@@ -229,26 +256,10 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
     }
 }
 
-pub trait HierarchyClass<'local> {
-    fn is_interface(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<bool>;
-
-    fn is_assignable_from(
-        &self,
-        env: &mut JNIEnv<'local>,
-        other: &JClass<'local>,
-    ) -> jni::errors::Result<bool>;
-
-    fn name(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<String>;
-
-    fn super_class(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<Option<JClass<'local>>>;
-
-    fn interfaces(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<Vec<JClass<'local>>>;
-}
-
 #[cfg(test)]
 mod test {
     use crate::{
-        class::{HierExt, class_cache},
+        class::{class_cache, HierExt},
         jni_env,
     };
 
@@ -263,7 +274,7 @@ mod test {
         env.free_lookup();
 
         assert_eq!(class_cache().lock().unwrap().len(), 0);
-        
+
         Ok(())
     }
 

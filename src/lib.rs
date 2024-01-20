@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::sync::{Arc, Once};
 
 use jni::{InitArgsBuilder, JNIEnv, JNIVersion, JavaVM};
@@ -31,6 +33,7 @@ fn jvm() -> &'static Arc<JavaVM> {
     unsafe { JVM.as_ref().unwrap() }
 }
 
+/// Get JNI environment instance, notice that the thread is attached permanently.
 pub fn jni_env() -> JNIEnv<'static> {
     jvm().attach_current_thread_permanently().unwrap()
 }

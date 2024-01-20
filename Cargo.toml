@@ -2,13 +2,18 @@
 name = "hier"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "A library supports JVM class hierarchy lookup by extending JNI interface"
+repository = "https://github.com/ChAoSUnItY/hier"
+readme = "README.md"
+keywords = ["jvm"]
+authors = ["ChAoS-UnItY (Kyle Lin) <minecraft.kyle.train@gmail.com>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 jni = { version = "0.21.1", features = ["invocation"] }
 graphviz-rust = { version = "0.7.0", optional = true }
-lazy_static = "1.4.0"
 
 [features]
 graph = ["dep:graphviz-rust"]

@@ -1,6 +1,7 @@
 # Hier
 
-Hier is a simple library supports JVM class hierarchy lookup.
+Hier is a library supports JVM class hierarchy lookup by extending
+JNI interface.
 
 ## Installation
 
