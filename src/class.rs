@@ -98,7 +98,7 @@ pub trait HierExt<'local> {
     where
         T: Desc<'local, JClass<'other_local>>;
 
-    fn common_super_class<'other_local_1: 'local, 'other_local_2: 'local, T, U>(
+    fn common_superclass<'other_local_1: 'local, 'other_local_2: 'local, T, U>(
         &mut self,
         class1: T,
         class2: U,
@@ -188,7 +188,7 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         Ok(interfaces)
     }
 
-    fn common_super_class<'other_local_1: 'local, 'other_local_2: 'local, T, U>(
+    fn common_superclass<'other_local_1: 'local, 'other_local_2: 'local, T, U>(
         &mut self,
         class1: T,
         class2: U,
@@ -272,7 +272,7 @@ mod test {
         let mut env = jni_env();
         let class1 = env.lookup_class("java/lang/Integer")?;
         let class2 = env.lookup_class("java/lang/Float")?;
-        let superclass = env.common_super_class(&class1, &class2)?;
+        let superclass = env.common_superclass(&class1, &class2)?;
         assert_eq!("java/lang/Number", env.class_name(&superclass)?);
 
         Ok(())
