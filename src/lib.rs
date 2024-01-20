@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, Once};
 
-use jni::{AttachGuard, InitArgsBuilder, JavaVM, JNIVersion};
+use jni::{InitArgsBuilder, JavaVM, JNIVersion, JNIEnv};
 use jni::objects::{JClass, JObjectArray, JValueOwned};
 
 #[cfg(feature = "graph")]
@@ -9,40 +9,40 @@ mod graph;
 pub extern crate jni;
 
 pub trait HierarchyClass<'local> {
-    fn is_interface(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<bool>;
+    fn is_interface(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<bool>;
 
-    fn is_assignable_from(&self, env: &mut AttachGuard<'local>, other: &JClass<'local>) -> jni::errors::Result<bool>;
+    fn is_assignable_from(&self, env: &mut JNIEnv<'local>, other: &JClass<'local>) -> jni::errors::Result<bool>;
 
-    fn name(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<String>;
+    fn name(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<String>;
 
-    fn super_class(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<Option<JClass<'local>>>;
+    fn super_class(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<Option<JClass<'local>>>;
 
-    fn interfaces(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<Vec<JClass<'local>>>;
+    fn interfaces(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<Vec<JClass<'local>>>;
 }
 
 impl<'local> HierarchyClass<'local> for JClass<'local> {
-    fn is_interface(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<bool> {
+    fn is_interface(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<bool> {
         env
             .call_method(self, "isInterface", "()Z", &[])
             .and_then(JValueOwned::z)
     }
 
-    fn is_assignable_from(&self, env: &mut AttachGuard<'local>, other: &JClass<'local>) -> jni::errors::Result<bool> {
+    fn is_assignable_from(&self, env: &mut JNIEnv<'local>, other: &JClass<'local>) -> jni::errors::Result<bool> {
         env.is_assignable_from(self, other)
     }
 
-    fn name(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<String> {
+    fn name(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<String> {
         let class_name = env
             .call_method(self, "getName", "()Ljava/lang/String;", &[])
             .and_then(JValueOwned::l)?;
         unsafe { env.get_string_unchecked((&class_name).into()).map(|java_str| java_str.into()) }.map(|name: String| name.replace(".", "/"))
     }
 
-    fn super_class(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<Option<JClass<'local>>> {
+    fn super_class(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<Option<JClass<'local>>> {
         env.get_superclass(self)
     }
 
-    fn interfaces(&self, env: &mut AttachGuard<'local>) -> jni::errors::Result<Vec<JClass<'local>>> {
+    fn interfaces(&self, env: &mut JNIEnv<'local>) -> jni::errors::Result<Vec<JClass<'local>>> {
         let interfaces_arr: JObjectArray<'local> = env.call_method(self, "getInterfaces", "()[Ljava/lang/Class;", &[])
             .and_then(JValueOwned::l)?
             .into();
@@ -81,27 +81,16 @@ fn jvm() -> &'static Arc<JavaVM> {
     unsafe { JVM.as_ref().unwrap() }
 }
 
-fn env() -> &'static Arc<Mutex<AttachGuard<'static>>> {
-    static mut ENV: Option<Arc<Mutex<AttachGuard>>> = None;
-    static INIT: Once = Once::new();
-
-    INIT.call_once(|| {
-        let env = jvm().attach_current_thread().unwrap();
-
-        unsafe {
-            ENV = Some(Arc::new(Mutex::new(env)));
-        }
-    });
-
-    unsafe { ENV.as_ref().unwrap() }
+fn thread() -> JNIEnv<'static> {
+    jvm().attach_current_thread_permanently().unwrap()
 }
 
-pub fn jclass<'local>(env: &mut AttachGuard<'local>, class_name: &str) -> jni::errors::Result<JClass<'local>> {
+pub fn jclass<'local>(env: &mut JNIEnv<'local>, class_name: &str) -> jni::errors::Result<JClass<'local>> {
     env.find_class(class_name)
 }
 
 /// Get common super class' simple name.
-pub fn common_super_class<'local>(env: &mut AttachGuard<'local>, class1: JClass<'local>, class2: JClass<'local>) -> jni::errors::Result<String> {
+pub fn common_super_class<'local>(env: &mut JNIEnv<'local>, class1: JClass<'local>, class2: JClass<'local>) -> jni::errors::Result<String> {
     let mut cls1: JClass = class1;
     let cls2: JClass = class2;
 
@@ -131,11 +120,11 @@ pub fn common_super_class<'local>(env: &mut AttachGuard<'local>, class1: JClass<
 
 #[cfg(test)]
 mod test {
-    use crate::{common_super_class, env, HierarchyClass, jclass};
+    use crate::{common_super_class, thread, HierarchyClass, jclass};
 
     #[test]
     fn test_number_common() -> jni::errors::Result<()> {
-        let mut env = env().lock().unwrap();
+        let mut env = thread();
         let class1 = jclass(&mut env, "java/lang/Integer")?;
         let class2 = jclass(&mut env, "java/lang/Float")?;
         assert_eq!("java/lang/Number", common_super_class(&mut env, class1, class2)?);
@@ -145,7 +134,7 @@ mod test {
 
     #[test]
     fn test_interfaces() -> jni::errors::Result<()> {
-        let mut env = env().lock().unwrap();
+        let mut env = thread();
         let class = jclass(&mut env, "java/lang/Integer")?;
         let interfaces = class.interfaces(&mut env)?;
         let interface_names = interfaces.iter().map(|interface| interface.name(&mut env)).collect::<jni::errors::Result<Vec<_>>>()?;
