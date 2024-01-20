@@ -25,6 +25,6 @@ jobs:
         java-version: ${{ matrix.java_version }}
     - uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        rustflags: "--cfg 'jvm_v${{ matrix.java_version }}'"
+        rustflags: "--cfg jvm_v${{ matrix.java_version }}"
     - name: Run tests
       run: cargo test --verbose
