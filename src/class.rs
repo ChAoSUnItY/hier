@@ -4,7 +4,6 @@ use std::sync::{Mutex, OnceLock};
 use jni::descriptors::Desc;
 use jni::objects::{GlobalRef, JClass, JObjectArray, JValueGen, JValueOwned};
 use jni::JNIEnv;
-use jni::strings::JavaStr;
 
 use crate::version::JavaVersion;
 
@@ -119,7 +118,7 @@ pub trait HierExt<'local> {
     ///
     /// Calling [HierExt::interfaces] returns `[JClass("java/lang/Comparable")]`,
     /// notice that this does collects interfaces derived by superclasses.
-    fn interfaces<'other_local, T>(&mut self, class: T) -> jni::errors::Result<Vec<JClass<'local>>>
+    fn interfaces<'other_local, T>(&mut self, class: T) -> jni::errors::Result<Vec<GlobalRef>>
     where
         T: Desc<'local, JClass<'other_local>>;
 
@@ -195,7 +194,7 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
             .map(|name| Into::<String>::into(name).replace(".", "/"))
     }
 
-    fn interfaces<'other_local, T>(&mut self, class: T) -> jni::errors::Result<Vec<JClass<'local>>>
+    fn interfaces<'other_local, T>(&mut self, class: T) -> jni::errors::Result<Vec<GlobalRef>>
     where
         T: Desc<'local, JClass<'other_local>>,
     {
@@ -208,7 +207,10 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         let mut interfaces = Vec::with_capacity(interfaces_len as usize);
 
         for i in 0..interfaces_len {
-            interfaces.push(self.get_object_array_element(&interfaces_arr, i)?.into());
+            let class = self.get_object_array_element(&interfaces_arr, i)?;
+            let cached_class = jclass_from_instance(self, (&class).into())?;
+
+            interfaces.push(cached_class);
         }
 
         Ok(interfaces)
