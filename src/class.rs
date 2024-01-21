@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock};
 
 use jni::descriptors::Desc;
 use jni::objects::{GlobalRef, JClass, JObjectArray, JValueGen, JValueOwned};
@@ -12,9 +12,9 @@ pub const OBJECT_CLASS_PATH: &'static str = "java/lang/Object";
 
 pub type ClassCache = HashMap<String, GlobalRef>;
 
-fn class_cache() -> &'static RwLock<ClassCache> {
-    static CLASS_CACHE: OnceLock<RwLock<ClassCache>> = OnceLock::new();
-    CLASS_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+fn class_cache() -> &'static Mutex<ClassCache> {
+    static CLASS_CACHE: OnceLock<Mutex<ClassCache>> = OnceLock::new();
+    CLASS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 // fn jclass_cache() -> &'static mut ClassCache {
@@ -27,14 +27,11 @@ fn class_cache() -> &'static RwLock<ClassCache> {
 /// instance will exist until the termination of program, if this is not desired,
 /// use [free_jclass_cache] to free cache.
 fn jclass(env: &mut JNIEnv, class_path: &str) -> Result<GlobalRef> {
-    let cache = class_cache().read()?;
+    let mut cache = class_cache().lock()?;
 
     if let Some(cached_class) = cache.get(class_path) {
         Ok(cached_class.clone())
     } else {
-        drop(cache);
-        let mut cache = class_cache().write()?;
-
         let class = env.find_class(class_path)?;
         let glob_ref = env.new_global_ref(class)?;
 
@@ -57,7 +54,7 @@ fn jclass_from_instance<'local, 'other_local, T>(
 where
     T: Desc<'local, JClass<'other_local>>,
 {
-    let cache = class_cache().read()?;
+    let mut cache = class_cache().lock()?;
 
     let instance = instance.lookup(env)?;
     let instance = instance.as_ref();
@@ -69,9 +66,6 @@ where
         }
     }
 
-    drop(cache);
-
-    let mut cache = class_cache().write()?;
     let instance_glob_ref = env.new_global_ref(instance)?;
 
     cache.insert(instance_class_path.to_string(), instance_glob_ref.clone());
@@ -81,7 +75,7 @@ where
 
 /// Frees jclass cache.
 fn free_jclass_cache() -> Result<()> {
-    class_cache().write()?.clear();
+    class_cache().lock()?.clear();
 
     Ok(())
 }
@@ -289,11 +283,11 @@ mod test {
         let mut env = jni_env();
         let _class1 = env.lookup_class("java/lang/Object")?;
 
-        assert_eq!(class_cache().read()?.len(), 1);
+        assert_eq!(class_cache().lock()?.len(), 1);
 
         env.free_lookup()?;
 
-        assert_eq!(class_cache().read()?.len(), 0);
+        assert_eq!(class_cache().lock()?.len(), 0);
 
         Ok(())
     }
