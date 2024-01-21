@@ -5,6 +5,7 @@ use std::sync::{Arc, Once};
 use jni::{InitArgsBuilder, JNIEnv, JNIVersion, JavaVM};
 
 pub mod class;
+mod errors;
 #[cfg(feature = "graph")]
 pub mod graph;
 pub mod version;

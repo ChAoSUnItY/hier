@@ -74,7 +74,7 @@ impl From<String> for JavaVersion {
 
 #[cfg(test)]
 mod test {
-    use crate::{class::HierExt, jni_env, version::JavaVersion};
+    use crate::{class::HierExt, errors::HierResult, jni_env, version::JavaVersion};
 
     #[test]
     #[cfg_attr(
@@ -86,7 +86,7 @@ mod test {
         ignore = "No Java version provided"
     )]
     /// Tests all possible jvm versions
-    fn test_jvm_version() -> jni::errors::Result<()> {
+    fn test_jvm_version() -> HierResult<()> {
         let current_jvm_version: JavaVersion = if cfg!(jvm_v0) {
             JavaVersion::V0
         } else if cfg!(jvm_v1) {
