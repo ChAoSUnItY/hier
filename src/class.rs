@@ -26,7 +26,7 @@ fn class_cache() -> &'static Mutex<ClassCache> {
 /// from JNI interface if not. After each successful fetching operation, [GlobalRef] (JClass)
 /// instance will exist until the termination of program, if this is not desired,
 /// use [free_jclass_cache] to free cache.
-fn jclass(env: &mut JNIEnv, class_path: &str) -> Result<GlobalRef> {
+pub(crate) fn jclass(env: &mut JNIEnv, class_path: &str) -> Result<GlobalRef> {
     let mut cache = class_cache().lock()?;
 
     if let Some(cached_class) = cache.get(class_path) {
@@ -47,7 +47,7 @@ fn jclass(env: &mut JNIEnv, class_path: &str) -> Result<GlobalRef> {
 /// 2. Existing JClass with same class path are not same instance, then cache and return the
 ///    provided one
 /// 3. JClass is not cached, then cache and return the provided one
-fn jclass_from_instance<'local, 'other_local, T>(
+pub(crate) fn jclass_from_instance<'local, 'other_local, T>(
     env: &mut JNIEnv<'local>,
     instance: T,
 ) -> Result<GlobalRef>
@@ -74,7 +74,7 @@ where
 }
 
 /// Frees jclass cache.
-fn free_jclass_cache() -> Result<()> {
+pub(crate) fn free_jclass_cache() -> Result<()> {
     class_cache().lock()?.clear();
 
     Ok(())
