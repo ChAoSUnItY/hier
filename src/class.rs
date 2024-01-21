@@ -17,11 +17,6 @@ fn class_cache() -> &'static Mutex<ClassCache> {
     CLASS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-// fn jclass_cache() -> &'static mut ClassCache {
-//     static CACHE: OnceLock<ClassCache> = OnceLock::new();
-//     CACHE.get_or_init(|| HashMap::new())
-// }
-
 /// Fetch an [GlobalRef] (JClass) either from cache if already fetched before, or directly
 /// from JNI interface if not. After each successful fetching operation, [GlobalRef] (JClass)
 /// instance will exist until the termination of program, if this is not desired,
