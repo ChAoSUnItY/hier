@@ -55,4 +55,4 @@ to use cached classes, use `HierExt::lookup_class`. To release the cache, use `H
 Additionally, `HierExt::common_superclass` always uses cached class to find.
 
 ## License
-
+Hier is licensed under MIT License.
