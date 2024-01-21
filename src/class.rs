@@ -53,7 +53,10 @@ fn jclass(env: &mut JNIEnv, class_path: &str) -> Result<GlobalRef> {
 fn jclass_from_instance<'local, 'other_local, T>(
     env: &mut JNIEnv<'local>,
     instance: T,
-) -> Result<GlobalRef> where T: Desc<'local, JClass<'other_local>> {
+) -> Result<GlobalRef>
+where
+    T: Desc<'local, JClass<'other_local>>,
+{
     let cache = class_cache().read()?;
 
     let instance = instance.lookup(env)?;
@@ -272,6 +275,8 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
 
 #[cfg(test)]
 mod test {
+    use serial_test::serial;
+
     use crate::{
         class::{class_cache, HierExt},
         errors::HierResult,
@@ -279,12 +284,12 @@ mod test {
     };
 
     #[test]
+    #[serial]
     fn test_lookup_caching() -> HierResult<()> {
         let mut env = jni_env();
         let _class1 = env.lookup_class("java/lang/Object")?;
 
-        // We can't actually expect how many classes has been look up
-        // assert_eq!(class_cache().lock().unwrap().len(), 1);
+        assert_eq!(class_cache().read()?.len(), 1);
 
         env.free_lookup()?;
 
@@ -294,6 +299,7 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_number_common_super_class() -> HierResult<()> {
         let mut env = jni_env();
         let class1 = env.lookup_class("java/lang/Integer")?;
@@ -301,10 +307,13 @@ mod test {
         let superclass = env.common_superclass(&class1, &class2)?;
         assert_eq!("java/lang/Number", env.class_name(&superclass)?);
 
+        env.free_lookup()?;
+
         Ok(())
     }
 
     #[test]
+    #[serial]
     #[cfg_attr(
         not(any(jvm_v8, jvm_v11, jvm_v17, jvm_v21)),
         ignore = "No Java LTS version provided"
@@ -333,6 +342,8 @@ mod test {
             .collect::<HierResult<Vec<_>>>()?;
 
         assert_eq!(implemented_interfaces, interface_names);
+
+        env.free_lookup()?;
 
         Ok(())
     }

@@ -16,5 +16,8 @@ jni = { version = "0.21.1", features = ["invocation"] }
 graphviz-rust = { version = "0.7.0", optional = true }
 thiserror = { version = "1.0.56" }
 
+[dev-dependencies]
+serial_test = "3.0.0"
+
 [features]
 graph = ["dep:graphviz-rust"]
