@@ -1,8 +1,10 @@
 #![doc = include_str!("../README.md")]
 
-use std::sync::{Arc, Once};
+use std::sync::Arc;
 
+use errors::HierResult as Result;
 use jni::{InitArgsBuilder, JNIEnv, JNIVersion, JavaVM};
+use once_cell::sync::OnceCell;
 
 pub mod class;
 mod errors;
@@ -13,28 +15,22 @@ pub mod version;
 pub extern crate jni;
 
 /// Get JVM instance, initialize if does not exist.
-fn jvm() -> &'static Arc<JavaVM> {
-    static mut JVM: Option<Arc<JavaVM>> = None;
-    static INIT: Once = Once::new();
+fn jvm() -> Result<&'static Arc<JavaVM>> {
+    static JVM: OnceCell<Arc<JavaVM>> = OnceCell::new();
 
-    INIT.call_once(|| {
+    JVM.get_or_try_init(|| -> Result<Arc<JavaVM>> {
         let jvm_args = InitArgsBuilder::new()
             .version(JNIVersion::V8)
             .option("-Xcheck:jni")
-            .build()
-            .unwrap_or_else(|e| panic!("{:#?}", e));
+            .build()?;
 
-        let jvm = JavaVM::new(jvm_args).unwrap_or_else(|e| panic!("{:#?}", e));
+        let jvm = JavaVM::new(jvm_args)?;
 
-        unsafe {
-            JVM = Some(Arc::new(jvm));
-        }
-    });
-
-    unsafe { JVM.as_ref().unwrap() }
+        Ok(Arc::new(jvm))
+    })
 }
 
 /// Get JNI environment instance, notice that the thread is attached permanently.
-pub fn jni_env() -> JNIEnv<'static> {
-    jvm().attach_current_thread_permanently().unwrap()
+pub fn jni_env() -> Result<JNIEnv<'static>> {
+    jvm().and_then(|jvm| jvm.attach_current_thread_permanently().map_err(Into::into))
 }

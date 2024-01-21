@@ -139,7 +139,7 @@ mod test {
             unreachable!()
         };
 
-        let mut env = jni_env();
+        let mut env = jni_env()?;
         let version = env.get_java_version()?;
 
         assert_eq!(current_jvm_version, version);

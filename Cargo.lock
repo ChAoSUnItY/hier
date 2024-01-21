@@ -262,6 +262,7 @@ version = "0.1.0"
 dependencies = [
  "graphviz-rust",
  "jni",
+ "once_cell",
  "serial_test",
  "thiserror",
 ]

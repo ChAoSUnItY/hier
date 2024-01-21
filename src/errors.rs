@@ -10,9 +10,13 @@ pub enum HierError {
     #[error(transparent)]
     JavaError(#[from] jni::errors::Error),
     #[error(transparent)]
+    JvmError(#[from] jni::JvmError),
+    #[error(transparent)]
     JniError(#[from] JniError),
     #[error(transparent)]
     StartJvmError(#[from] StartJvmError),
+    #[error("attempt to fetch existed JVM but JVM has already failed to initialized")]
+    InitializeJvmFailedError,
     #[error("unable to access to class cache, reason: {0}")]
     CacheAccessError(&'static str),
 }

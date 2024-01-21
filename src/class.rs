@@ -280,7 +280,7 @@ mod test {
     #[test]
     #[serial]
     fn test_lookup_caching() -> HierResult<()> {
-        let mut env = jni_env();
+        let mut env = jni_env()?;
         let _class1 = env.lookup_class("java/lang/Object")?;
 
         assert_eq!(class_cache().lock()?.len(), 1);
@@ -295,7 +295,7 @@ mod test {
     #[test]
     #[serial]
     fn test_number_common_super_class() -> HierResult<()> {
-        let mut env = jni_env();
+        let mut env = jni_env()?;
         let class1 = env.lookup_class("java/lang/Integer")?;
         let class2 = env.lookup_class("java/lang/Float")?;
         let superclass = env.common_superclass(&class1, &class2)?;
@@ -327,7 +327,7 @@ mod test {
             unreachable!()
         };
 
-        let mut env = jni_env();
+        let mut env = jni_env()?;
         let class = env.lookup_class("java/lang/Integer")?;
         let interfaces = env.interfaces(&class)?;
         let interface_names = interfaces
