@@ -56,7 +56,7 @@ impl Class {
     // TODO: Distinct other naming fetching functions
     pub fn class_name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
         let mut class = self.lock()?;
-        class.class_name(env).cloned()
+        class.class_name(env)
     }
 
     /// Returns class' access flags. See [Modifiers] for all possible modifiers that would
@@ -224,14 +224,11 @@ impl ClassInternal {
 
                 Ok(Some(Arc::downgrade(&cached_superclass)))
             })
-            .map(|opt_superclass| {
-                opt_superclass
-                    .clone()
-                    .and_then(|superclass| superclass.upgrade())
-            })
+            .map(Option::as_ref)
+            .map(|opt_superclass| opt_superclass.and_then(Weak::upgrade))
     }
 
-    fn class_name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<&String> {
+    fn class_name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
         self.class_name
             .get_or_try_init(|| {
                 let method_id =
@@ -248,6 +245,7 @@ impl ClassInternal {
                         .map(|name| name.replace(".", "/"))
                 }
             })
+            .cloned()
             .map_err(Into::into)
     }
 
@@ -267,7 +265,7 @@ impl ClassInternal {
                     .map(|modifiers| modifiers as u16)
                 }
             })
-            .map(|modifiers| *modifiers)
+            .copied()
             .map_err(Into::into)
     }
 
