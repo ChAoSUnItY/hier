@@ -132,7 +132,7 @@ impl Class {
     ) -> Result<&Vec<Arc<Mutex<Class>>>> {
         self.interfaces.get_or_try_init(|| {
             let method_id =
-                env.get_method_id(Self::CLASS_CP, "getModifiers", "()[Ljava/lang/Class;")?;
+                env.get_method_id(Self::CLASS_CP, "getInterfaces", "()[Ljava/lang/Class;")?;
             let interface_arr: JObjectArray = unsafe {
                 env.call_method_unchecked(&self.inner, method_id, ReturnType::Array, &[])
                     .and_then(JValueGen::l)?
