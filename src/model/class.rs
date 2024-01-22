@@ -44,12 +44,11 @@ impl Class {
     ///
     /// assert_eq!(superclass_name, "java/lang/Number");
     /// ```
-    pub fn superclass<'local>(
-        &mut self,
-        env: &mut JNIEnv<'local>,
-    ) -> Result<Option<Arc<Mutex<ClassInternal>>>> {
+    pub fn superclass<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<Option<Self>> {
         let mut class = self.lock()?;
-        class.superclass(env)
+        class
+            .superclass(env)
+            .map(|opt_superclass| opt_superclass.map(Self::new))
     }
 
     /// Fetches class name.
