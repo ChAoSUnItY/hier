@@ -311,7 +311,7 @@ impl ClassInternal {
     fn is_interface<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
         let modifiers = self.modifiers(env)?;
 
-        Ok(modifiers & Modifiers::Interface == 1)
+        Ok(Modifiers::is_interface_bits(modifiers))
     }
 
     fn common_superclass<'local>(

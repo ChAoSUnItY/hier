@@ -2,6 +2,33 @@ use std::fmt::{self, Debug, Display};
 
 use bitflags::bitflags;
 
+macro_rules! __bitor_flags {
+    ($($flags:ident),*) => {
+        $(Self::$flags.bits() |)* 0
+    };
+}
+
+macro_rules! __impl_flag_chk {
+    ($flag:ident) => {
+        __impl_flag_chk!($flag, concat!("[Modifiers::", stringify!($flag), "]"));
+    };
+    ($flag:ident, $flag_ref:expr) => {
+        paste::paste! {
+            #[doc = "Determine if provided [u16] has flag"]
+            #[doc = $flag_ref]
+            pub const fn [<is_ $flag:lower _bits>](bits: u16) -> bool {
+                Self::from_bits_truncate(bits).[<is_ $flag:lower>]()
+            }
+
+            #[doc = "Determine if [Modifiers] has flag"]
+            #[doc = $flag_ref]
+            pub const fn [<is_ $flag:lower>](&self) -> bool {
+                Self::contains(self, Self::$flag)
+            }
+        }
+    };
+}
+
 bitflags! {
     #[derive(Clone, Copy, PartialEq, Eq)]
     pub struct Modifiers: u16 {
@@ -17,42 +44,30 @@ bitflags! {
         const Interface = 0x0200;
         const Abstract = 0x0400;
         const Strict = 0x0800;
+
+        const CLASS_MODIFIERS = __bitor_flags!(Public, Protected, Private, Static, Final, Abstract, Strict);
+        const INTERFACE_MODIFIERS = __bitor_flags!(Public, Protected, Private, Static, Abstract, Strict);
+        const CONSTRUCTOR_MODIFIERS = __bitor_flags!(Public, Protected, Private);
+        const METHOD_MODIFIERS = __bitor_flags!(Public, Protected, Private, Static, Final, Abstract, Native, Synchronized, Strict);
+        const FIELD_MODIFIERS = __bitor_flags!(Public, Protected, Private, Static, Final, Transient, Volatile);
+        const PARAMETER_MODIFIERS = __bitor_flags!(Final);
+        const ACCESS_MODIFIERS = __bitor_flags!(Public, Protected, Private);
     }
 }
 
 impl Modifiers {
-    pub const CLASS_MODIFIERS: Modifiers = Self::Public
-        | Self::Protected
-        | Self::Private
-        | Self::Static
-        | Self::Final
-        | Self::Abstract
-        | Self::Strict;
-    pub const INTERFACE_MODIFIERS: Modifiers = Self::Public
-        | Self::Protected
-        | Self::Private
-        | Self::Abstract
-        | Self::Static
-        | Self::Strict;
-    pub const CONSTRUCTOR_MODIFIERS: Modifiers = Self::Public | Self::Protected | Self::Private;
-    pub const METHOD_MODIFIERS: Modifiers = Self::Public
-        | Self::Protected
-        | Self::Private
-        | Self::Static
-        | Self::Final
-        | Self::Abstract
-        | Self::Native
-        | Self::Synchronized
-        | Self::Strict;
-    pub const FIELD_MODIFIERS: Modifiers = Self::Public
-        | Self::Protected
-        | Self::Private
-        | Self::Static
-        | Self::Final
-        | Self::Transient
-        | Self::Volatile;
-    pub const PARAMETER_MODIFIERS: Modifiers = Self::Final;
-    pub const ACCESS_MODIFIERS: Modifiers = Self::Public | Self::Protected | Self::Private;
+    __impl_flag_chk!(Public);
+    __impl_flag_chk!(Private);
+    __impl_flag_chk!(Protected);
+    __impl_flag_chk!(Static);
+    __impl_flag_chk!(Final);
+    __impl_flag_chk!(Synchronized);
+    __impl_flag_chk!(Volatile);
+    __impl_flag_chk!(Transient);
+    __impl_flag_chk!(Native);
+    __impl_flag_chk!(Interface);
+    __impl_flag_chk!(Abstract);
+    __impl_flag_chk!(Strict);
 }
 
 impl Debug for Modifiers {
