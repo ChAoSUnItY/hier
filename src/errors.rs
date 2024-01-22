@@ -17,6 +17,8 @@ pub enum HierError {
     StartJvmError(#[from] StartJvmError),
     #[error("unable to access to class cache, reason: {0}")]
     CacheAccessError(&'static str),
+    #[error("unable to find the class {0} in the cache, Class probably had been freed up")]
+    DanglingClassError(String),
 }
 
 impl<T> From<PoisonError<T>> for HierError {

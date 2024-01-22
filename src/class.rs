@@ -1,16 +1,259 @@
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::fmt::Display;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use jni::descriptors::Desc;
 use jni::objects::{GlobalRef, JClass, JObjectArray, JValueGen, JValueOwned};
+use jni::signature::{Primitive, ReturnType};
 use jni::JNIEnv;
+use once_cell::sync::OnceCell;
 
-use crate::errors::HierResult as Result;
+use crate::errors::{HierError, HierResult as Result};
+use crate::modifiers::Modifiers;
 use crate::version::JavaVersion;
+
+/// A pseudo java class that projects `java/lang/Class`.
+pub struct Class {
+    /// A self weak reference that referenced to the [Arc] holding this
+    /// [Class] instance in [class_cache]. This is guaranteed to be always
+    /// upgradable unless [class_cache] is freed.
+    self_cached_weak_ref: OnceCell<Weak<Mutex<Self>>>,
+    inner: GlobalRef,
+    superclass: OnceCell<Option<Weak<Mutex<Self>>>>,
+    interfaces: OnceCell<Vec<Arc<Mutex<Self>>>>,
+    class_name: OnceCell<String>,
+    modifiers: OnceCell<u16>,
+}
+
+impl Class {
+    pub const CLASS_CP: &'static str = "java/lang/Class";
+
+    /// Creates new [Class] from an [GlobalRef] that stores reference to
+    /// [JClass] as internal backend.
+    pub fn new(class_obj: GlobalRef) -> Self {
+        Self {
+            self_cached_weak_ref: OnceCell::new(),
+            superclass: OnceCell::new(),
+            inner: class_obj,
+            class_name: OnceCell::new(),
+            modifiers: OnceCell::new(),
+            interfaces: OnceCell::new(),
+        }
+    }
+
+    /// Initialize self [Weak] reference to the own entry in [class_cache].
+    /// This should be done internally and once.
+    fn initialize_self_weak_ref(&mut self, weak_ref: Weak<Mutex<Self>>) {
+        self.self_cached_weak_ref
+            .set(weak_ref)
+            .expect("self_cached_weak_ref should not be initialized yet");
+    }
+
+    /// Lookups superclass from given class instance, returns [None] for if current [Class] is
+    /// `Class(java/lang/Object)` or an interface.
+    pub fn superclass<'local>(
+        &mut self,
+        env: &mut JNIEnv<'local>,
+    ) -> Result<Option<Arc<Mutex<Class>>>> {
+        self.superclass
+            .get_or_try_init(|| {
+                let Some(superclass) = env.get_superclass(&self.inner)? else {
+                    return Ok(None);
+                };
+                let cached_superclass = fetch_class_from_jclass(env, superclass)?;
+
+                Ok(Some(Arc::downgrade(&cached_superclass)))
+            })
+            .map(|opt_superclass| {
+                opt_superclass
+                    .clone()
+                    .and_then(|superclass| superclass.upgrade())
+            })
+    }
+
+    pub fn class_name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<&String> {
+        self.class_name
+            .get_or_try_init(|| {
+                let method_id =
+                    env.get_method_id(Self::CLASS_CP, "getName", "()Ljava/lang/String;")?;
+                let class_name = unsafe {
+                    env.call_method_unchecked(&self.inner, method_id, ReturnType::Object, &[])
+                        .and_then(JValueGen::l)?
+                };
+                let class_name = env.auto_local(class_name);
+
+                unsafe {
+                    env.get_string_unchecked(class_name.deref().into())
+                        .map(Into::<String>::into)
+                        .map(|name| name.replace(".", "/"))
+                }
+            })
+            .map_err(Into::into)
+    }
+
+    /// Returns class' access flags. See [Modifiers] for all possible modifiers that would
+    /// OR-ing together.
+    ///
+    /// # Example
+    ///
+    /// Assuming variable class is a [Class] references to `JClass(java/lang/String)`:
+    ///
+    /// ```rs
+    /// let mut env = jni_env()?;
+    /// let class = fetch_class(&mut env, "java/lang/String")?;
+    /// let modifiers = class.lock()?.modifiers()?;
+    ///
+    /// assert_eq!(modifiers, Modifiers::Public & Modifiers::Final)
+    /// ```
+    pub fn modifiers<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<u16> {
+        self.modifiers
+            .get_or_try_init(|| {
+                let method_id = env.get_method_id(Self::CLASS_CP, "getModifiers", "()I")?;
+
+                unsafe {
+                    env.call_method_unchecked(
+                        &self.inner,
+                        method_id,
+                        ReturnType::Primitive(Primitive::Int),
+                        &[],
+                    )
+                    .and_then(JValueOwned::i)
+                    .map(|modifiers| modifiers as u16)
+                }
+            })
+            .map(|modifiers| *modifiers)
+            .map_err(Into::into)
+    }
+
+    pub fn interfaces<'local>(
+        &mut self,
+        env: &mut JNIEnv<'local>,
+    ) -> Result<&Vec<Arc<Mutex<Class>>>> {
+        self.interfaces.get_or_try_init(|| {
+            let method_id =
+                env.get_method_id(Self::CLASS_CP, "getModifiers", "()[Ljava/lang/Class;")?;
+            let interface_arr: JObjectArray = unsafe {
+                env.call_method_unchecked(&self.inner, method_id, ReturnType::Array, &[])
+                    .and_then(JValueGen::l)?
+                    .into()
+            };
+            let interface_arr = env.auto_local(interface_arr);
+            let interfaces_len = env.get_array_length(interface_arr.deref())?;
+            let mut interfaces = Vec::with_capacity(interfaces_len as usize);
+
+            for i in 0..interfaces_len {
+                let interface_class = env
+                    .get_object_array_element(interface_arr.deref(), i)?
+                    .into();
+                let interface_class = fetch_class_from_jclass(env, interface_class)?;
+
+                interfaces.push(interface_class);
+            }
+
+            Ok(interfaces)
+        })
+    }
+
+    /// Determines if the class or interface represented by this [Class] is either the same as,
+    /// or is a superclass or superinterface of, the class or interface represented by the specified
+    /// [Class] parameter.
+    ///
+    /// If this [Class] represents primitive types, then returns true if the specified [Class] is exactly
+    /// same, otherwise false.
+    ///
+    /// # Example
+    ///
+    /// ```rs
+    /// let mut env = jni_env()?;
+    /// let class1 = fetch_class(&mut env, "java/lang/Integer")?;
+    /// let class2 = fetch_class(&mut env, "java/lang/Number")?;
+    /// let is_assignable = class2.lock()?.is_assignable_from(class1.lock()?)?;
+    ///
+    /// assert_eq!(is_assignable, true);
+    /// ```
+    pub fn is_assignable_from<'local>(
+        &mut self,
+        env: &mut JNIEnv<'local>,
+        other: &Self,
+    ) -> Result<bool> {
+        // FIXME: Should we explore the both classes class hierarchy and so the
+        // whole hierarchy tree can be cached and used later for better performance?
+        env.is_assignable_from(&self.inner, &other.inner)
+            .map_err(Into::into)
+    }
+
+    /// Determines if the given class is an interface type.
+    pub fn is_interface<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
+        let modifiers = self.modifiers(env)?;
+
+        Ok(modifiers & Modifiers::Interface == 1)
+    }
+
+    /// Returns the given 2 class' most common superclass.
+    ///
+    /// If 1 of the classes is interface, then returns `JClass("java/lang/Object")`.
+    pub fn common_superclass<'local>(
+        &mut self,
+        env: &mut JNIEnv<'local>,
+        other: &mut Self,
+    ) -> Result<Arc<Mutex<Class>>> {
+        let mut cls1 = self
+            .self_cached_weak_ref
+            .get()
+            .and_then(Weak::upgrade)
+            .ok_or(HierError::DanglingClassError(format!("{:#}", self)))?;
+        let cls2 = other
+            .self_cached_weak_ref
+            .get()
+            .and_then(Weak::upgrade)
+            .ok_or(HierError::DanglingClassError(format!("{:#}", other)))?;
+
+        if other.is_assignable_from(env, self)? {
+            return Ok(cls1);
+        }
+
+        if self.is_assignable_from(env, other)? {
+            return Ok(cls2);
+        }
+
+        cls1 = match self.superclass(env)? {
+            Some(cls) => cls,
+            None => return fetch_class(env, OBJECT_CLASS_PATH),
+        };
+
+        loop {
+            let mut cls1_guard = cls1.lock()?;
+
+            if other.is_assignable_from(env, &cls1_guard)? {
+                drop(cls1_guard);
+                return Ok(cls1);
+            }
+
+            match cls1_guard.superclass(env)? {
+                Some(cls) => {
+                    drop(cls1_guard);
+                    cls1 = cls;
+                }
+                None => return fetch_class(env, OBJECT_CLASS_PATH),
+            };
+        }
+    }
+}
+
+impl Display for Class {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Class({})",
+            self.class_name.get().unwrap_or(&"...".to_owned())
+        )
+    }
+}
 
 pub const OBJECT_CLASS_PATH: &'static str = "java/lang/Object";
 
-pub type ClassCache = HashMap<String, GlobalRef>;
+pub type ClassCache = HashMap<String, Arc<Mutex<Class>>>;
 
 fn class_cache() -> &'static Mutex<ClassCache> {
     static CLASS_CACHE: OnceLock<Mutex<ClassCache>> = OnceLock::new();
@@ -21,55 +264,49 @@ fn class_cache() -> &'static Mutex<ClassCache> {
 /// from JNI interface if not. After each successful fetching operation, [GlobalRef] (JClass)
 /// instance will exist until the termination of program, if this is not desired,
 /// use [free_jclass_cache] to free cache.
-fn jclass(env: &mut JNIEnv, class_path: &str) -> Result<GlobalRef> {
-    let mut cache = class_cache().lock()?;
+fn fetch_class<'local>(env: &mut JNIEnv<'local>, class_path: &str) -> Result<Arc<Mutex<Class>>> {
+    let cache = class_cache().lock()?;
 
     if let Some(cached_class) = cache.get(class_path) {
         Ok(cached_class.clone())
     } else {
-        let class = env.find_class(class_path)?;
-        let glob_ref = env.new_global_ref(class)?;
-
-        Ok(cache
-            .entry(class_path.to_string())
-            .or_insert(glob_ref)
-            .clone())
+        drop(cache);
+        let jclass = env.find_class(class_path)?;
+        fetch_class_from_jclass(env, jclass)
     }
 }
 
-/// Fetch an [GlobalRef] (JClass) from cache, either:
-/// 1. Existing JClass with same class path are same instance, then return cached one.
-/// 2. Existing JClass with same class path are not same instance, then cache and return the
-///    provided one
-/// 3. JClass is not cached, then cache and return the provided one
-fn jclass_from_instance<'local, 'other_local, T>(
+fn fetch_class_from_jclass<'local, 'other_local>(
     env: &mut JNIEnv<'local>,
-    instance: T,
-) -> Result<GlobalRef>
-where
-    T: Desc<'local, JClass<'other_local>>,
-{
+    jclass: JClass<'other_local>,
+) -> Result<Arc<Mutex<Class>>> {
+    let jclass_cp = env.class_name(&jclass)?;
+
+    fetch_class_from_jclass_internal(env, jclass, &jclass_cp)
+}
+
+fn fetch_class_from_jclass_internal<'local, 'other_local>(
+    env: &mut JNIEnv<'local>,
+    jclass: JClass<'other_local>,
+    known_jclass_cp: &str,
+) -> Result<Arc<Mutex<Class>>> {
     let mut cache = class_cache().lock()?;
-
-    let instance = instance.lookup(env)?;
-    let instance = instance.as_ref();
-    let instance_class_path = env.class_name(instance)?;
-
-    if let Some(glob_ref) = cache.get(&instance_class_path) {
-        if env.is_same_object(&glob_ref, instance)? {
-            return Ok(glob_ref.clone());
-        }
+    let glob_ref = env.new_global_ref(jclass)?;
+    let class = Arc::new(Mutex::new(Class::new(glob_ref)));
+    let weak_class_self_ref = Arc::downgrade(&class);
+    {
+        let mut class_guard = class.lock()?;
+        class_guard.initialize_self_weak_ref(weak_class_self_ref);
     }
 
-    let instance_glob_ref = env.new_global_ref(instance)?;
-
-    cache.insert(instance_class_path.to_string(), instance_glob_ref.clone());
-
-    Ok(instance_glob_ref)
+    Ok(cache
+        .entry(known_jclass_cp.to_string())
+        .or_insert(class)
+        .clone())
 }
 
 /// Frees jclass cache.
-fn free_jclass_cache() -> Result<()> {
+unsafe fn free_jclass_cache() -> Result<()> {
     class_cache().lock()?.clear();
 
     Ok(())
@@ -84,63 +321,30 @@ pub trait HierExt<'local> {
 
     /// Lookups class from given class path, if class is found, then caches and returns
     /// it.
-    fn lookup_class(&mut self, class_path: &str) -> Result<GlobalRef>;
-
-    /// Lookups superclass from given class instance, if superclass is found, then
-    /// caches and returns, otherwise, returns [None].
-    fn lookup_superclass<'other_local, T>(&mut self, class: T) -> Result<Option<GlobalRef>>
-    where
-        T: Desc<'local, JClass<'other_local>>;
+    fn lookup_class(&mut self, class_path: &str) -> Result<Arc<Mutex<Class>>>;
 
     /// Frees the class cache.
-    fn free_lookup(&mut self) -> Result<()> {
+    ///
+    /// # Safety
+    ///
+    /// This could cause current existed unfreed [Class] to be unreliable,
+    /// you'll need to get another instance of [Class] through [HierExt::lookup_class].
+    ///
+    /// Calling to existed unfreed [Class] would lead to undefined behaviour.
+    unsafe fn free_lookup(&mut self) -> Result<()> {
         free_jclass_cache()
     }
-
-    /// Determines if the given class is an interface type.
-    fn is_interface<'other_local, T>(&mut self, class: T) -> Result<bool>
-    where
-        T: Desc<'local, JClass<'other_local>>;
 
     /// Returns the given class' class path.
     fn class_name<'other_local, T>(&mut self, class: T) -> Result<String>
     where
         T: Desc<'local, JClass<'other_local>>;
-
-    /// Returns the given class' derived interfaces.
-    ///
-    /// # Example
-    ///
-    /// Assuming `java/lang/Integer` has the following declaration:
-    /// ```java
-    /// public class Integer extends Number implements Comparable<Integer> {
-    ///     // ...
-    /// }
-    /// ```
-    ///
-    /// Calling [HierExt::interfaces] returns `[JClass("java/lang/Comparable")]`,
-    /// notice that this does collects interfaces derived by superclasses.
-    fn interfaces<'other_local, T>(&mut self, class: T) -> Result<Vec<GlobalRef>>
-    where
-        T: Desc<'local, JClass<'other_local>>;
-
-    /// Returns the given 2 class' most common superclass.
-    ///
-    /// If 1 of the classes is interface, then returns `JClass("java/lang/Object")`.
-    fn common_superclass<'other_local_1: 'local, 'other_local_2: 'local, T, U>(
-        &mut self,
-        class1: T,
-        class2: U,
-    ) -> Result<GlobalRef>
-    where
-        T: Desc<'local, JClass<'other_local_1>>,
-        U: Desc<'local, JClass<'other_local_2>>;
 }
 
 impl<'local> HierExt<'local> for JNIEnv<'local> {
     fn get_java_version(&mut self) -> Result<JavaVersion> {
         let sys_class = self.find_class("java/lang/System")?;
-        let property = self.new_string("java.specification.version")?;
+        let property = self.auto_local(self.new_string("java.specification.version")?);
         let version = self
             .call_static_method(
                 sys_class,
@@ -149,37 +353,17 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
                 &[(&property).into()],
             )
             .and_then(JValueGen::l)?;
+        let version = self.auto_local(version);
 
-        self.get_string((&version).into())
-            .map(|java_str| JavaVersion::from(Into::<String>::into(java_str)))
-            .map_err(Into::into)
+        unsafe {
+            self.get_string_unchecked(version.deref().into())
+                .map(|java_str| JavaVersion::from(Into::<String>::into(java_str)))
+                .map_err(Into::into)
+        }
     }
 
-    fn lookup_class(&mut self, class_path: &str) -> Result<GlobalRef> {
-        jclass(self, class_path)
-    }
-
-    fn lookup_superclass<'other_local, T>(&mut self, class: T) -> Result<Option<GlobalRef>>
-    where
-        T: Desc<'local, JClass<'other_local>>,
-    {
-        let class = class.lookup(self)?;
-        let Some(superclass_instance) = self.get_superclass(class.as_ref())? else {
-            return Ok(None);
-        };
-
-        jclass_from_instance(self, &superclass_instance).map(Option::Some)
-    }
-
-    fn is_interface<'other_local, T>(&mut self, class: T) -> Result<bool>
-    where
-        T: Desc<'local, JClass<'other_local>>,
-    {
-        let class = class.lookup(self)?;
-
-        self.call_method(class.as_ref(), "isInterface", "()Z", &[])
-            .and_then(JValueOwned::z)
-            .map_err(Into::into)
+    fn lookup_class(&mut self, class_path: &str) -> Result<Arc<Mutex<Class>>> {
+        fetch_class(self, class_path)
     }
 
     fn class_name<'other_local, T>(&mut self, class: T) -> Result<String>
@@ -187,78 +371,19 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         T: Desc<'local, JClass<'other_local>>,
     {
         let class = class.lookup(self)?;
-        let class_name = self
-            .call_method(class.as_ref(), "getName", "()Ljava/lang/String;", &[])
-            .and_then(JValueOwned::l)?;
+        let method_id = self.get_method_id(Class::CLASS_CP, "getName", "()Ljava/lang/String;")?;
+        let class_name = unsafe {
+            self.call_method_unchecked(class.as_ref(), method_id, ReturnType::Object, &[])
+                .and_then(JValueGen::l)?
+        };
+        let class_name = self.auto_local(class_name);
 
-        self.get_string((&class_name).into())
-            .map(|name| Into::<String>::into(name).replace(".", "/"))
-            .map_err(Into::into)
-    }
-
-    fn interfaces<'other_local, T>(&mut self, class: T) -> Result<Vec<GlobalRef>>
-    where
-        T: Desc<'local, JClass<'other_local>>,
-    {
-        let class = class.lookup(self)?;
-        let interfaces_arr: JObjectArray<'local> = self
-            .call_method(class.as_ref(), "getInterfaces", "()[Ljava/lang/Class;", &[])
-            .and_then(JValueOwned::l)?
-            .into();
-        let interfaces_len = self.get_array_length(&interfaces_arr)?;
-        let mut interfaces = Vec::with_capacity(interfaces_len as usize);
-
-        for i in 0..interfaces_len {
-            let class = self.get_object_array_element(&interfaces_arr, i)?;
-            let class: &JClass = (&class).into();
-            let cached_class = jclass_from_instance(self, class)?;
-
-            interfaces.push(cached_class);
+        unsafe {
+            self.get_string_unchecked(class_name.deref().into())
+                .map(Into::<String>::into)
+                .map(|name| name.replace(".", "/"))
+                .map_err(Into::into)
         }
-
-        Ok(interfaces)
-    }
-
-    fn common_superclass<'other_local_1: 'local, 'other_local_2: 'local, T, U>(
-        &mut self,
-        class1: T,
-        class2: U,
-    ) -> Result<GlobalRef>
-    where
-        T: Desc<'local, JClass<'other_local_1>>,
-        U: Desc<'local, JClass<'other_local_2>>,
-    {
-        let class1 = class1.lookup(self)?;
-        let class2 = class2.lookup(self)?;
-        let class1: &JClass = class1.as_ref();
-        let class2: &JClass = class2.as_ref();
-        let mut cls1 = jclass_from_instance(self, class1)?;
-        let cls2 = jclass_from_instance(self, class2)?;
-
-        if self.is_assignable_from(&cls2, &cls1)? {
-            return Ok(cls1);
-        }
-
-        if self.is_assignable_from(&cls1, &cls2)? {
-            return Ok(cls2);
-        }
-
-        if self.is_interface(&cls1)? || self.is_interface(&cls2)? {
-            return jclass(self, OBJECT_CLASS_PATH);
-        }
-
-        while {
-            cls1 = match self.lookup_superclass(&cls1)? {
-                Some(cls) => cls,
-                None => return jclass(self, OBJECT_CLASS_PATH),
-            };
-
-            !self.is_assignable_from(&cls2, &cls1)?
-        } {}
-
-        let cls1: &JClass = cls1.as_obj().as_ref().into();
-
-        jclass_from_instance(self, cls1)
     }
 }
 
@@ -280,7 +405,9 @@ mod test {
 
         assert_eq!(class_cache().lock()?.len(), 1);
 
-        env.free_lookup()?;
+        unsafe {
+            env.free_lookup()?;
+        }
 
         assert_eq!(class_cache().lock()?.len(), 0);
 
@@ -293,10 +420,20 @@ mod test {
         let mut env = jni_env()?;
         let class1 = env.lookup_class("java/lang/Integer")?;
         let class2 = env.lookup_class("java/lang/Float")?;
-        let superclass = env.common_superclass(&class1, &class2)?;
-        assert_eq!("java/lang/Number", env.class_name(&superclass)?);
 
-        env.free_lookup()?;
+        {
+            let mut class1 = class1.lock()?;
+            let mut class2 = class2.lock()?;
+            let superclass = class1.common_superclass(&mut env, &mut class2)?;
+            let mut superclass_guard = superclass.lock()?;
+            let superclass_name = superclass_guard.class_name(&mut env)?;
+
+            assert_eq!("java/lang/Number", superclass_name);
+        }
+
+        unsafe {
+            env.free_lookup()?;
+        }
 
         Ok(())
     }
@@ -324,15 +461,25 @@ mod test {
 
         let mut env = jni_env()?;
         let class = env.lookup_class("java/lang/Integer")?;
-        let interfaces = env.interfaces(&class)?;
-        let interface_names = interfaces
-            .iter()
-            .map(|interface| env.class_name(interface))
-            .collect::<HierResult<Vec<_>>>()?;
 
-        assert_eq!(implemented_interfaces, interface_names);
+        {
+            let mut class = class.lock()?;
+            let interfaces = class.interfaces(&mut env)?;
+            let interface_names = interfaces
+                .iter()
+                .map(|interface| {
+                    let mut interface = interface.lock()?;
 
-        env.free_lookup()?;
+                    interface.class_name(&mut env).cloned()
+                })
+                .collect::<HierResult<Vec<_>>>()?;
+
+            assert_eq!(implemented_interfaces, interface_names);
+        }
+
+        unsafe {
+            env.free_lookup()?;
+        }
 
         Ok(())
     }

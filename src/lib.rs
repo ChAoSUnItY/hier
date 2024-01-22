@@ -10,6 +10,7 @@ pub mod class;
 mod errors;
 #[cfg(feature = "graph")]
 pub mod graph;
+mod modifiers;
 pub mod version;
 
 pub extern crate jni;
