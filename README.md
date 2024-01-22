@@ -15,14 +15,14 @@ e.g. `JAVA_HOME`).
 
 ```rs
 use hier::jni_env;
-use hier::class::{ HierExt };
+use hier::HierExt;
 
 fn main() {
-    let mut env = jni_env();
-    let integer_class = env.lookup_class("java/lang/Integer").unwrap();
-    let float_class = env.lookup_class("java/lang/Float").unwrap();
-    let common_superclass = env.common_superclass(&integer_class, &float_class).unwrap();
-    let cs_class_name = env.class_name(&common_superclass).unwrap();
+    let mut env = jni_env().unwrap();
+    let mut integer_class = env.lookup_class("java/lang/Integer").unwrap();
+    let mut float_class = env.lookup_class("java/lang/Float").unwrap();
+    let mut common_superclass = integer_class.common_superclass(&mut env, &mut float_class).unwrap();
+    let cs_class_name = common_superclass.class_name(&mut env).unwrap();
 
     println!("{cs_class_name}");
 }
@@ -32,18 +32,18 @@ fn main() {
 
 ```rs
 use hier::jni_env;
-use hier::class::{ HierExt };
+use hier::HierExt;
 
 fn main() {
-    let mut env = jni_env();
-    let integer_class = env.lookup_class("java/lang/Integer").unwrap();
-    let interfaces = env.interfaces(&integer_class).unwrap();
-    let interface_names = interfaces.iter()
-        .map(|interface_class| env.class_name(interface_class))
-        .collect::<Result<_, Vec<_>>>()
+    let mut env = jni_env().unwrap();
+    let mut integer_class = env.lookup_class("java/lang/Integer").unwrap();
+    let mut interfaces = integer_class.interfaces(&mut env).unwrap();
+    let interface_names = interfaces.iter_mut()
+        .map(|interface_class| interface_class.class_name(&mut env))
+        .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
-    println!("{cs_class_name}");
+    println!("{interface_names:#?}");
 }
 ```
 

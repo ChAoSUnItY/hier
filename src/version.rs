@@ -74,7 +74,7 @@ impl From<String> for JavaVersion {
 
 #[cfg(test)]
 mod test {
-    use crate::{class::HierExt, errors::HierResult, jni_env, version::JavaVersion};
+    use crate::{errors::HierResult, jni_env, version::JavaVersion, HierExt};
 
     #[test]
     #[cfg_attr(
