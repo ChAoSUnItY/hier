@@ -69,22 +69,22 @@ fn fetch_class<'local>(
     } else {
         drop(cache);
         let jclass = env.find_class(class_path)?;
-        fetch_class_from_jclass(env, jclass)
+        fetch_class_from_jclass(env, &jclass)
     }
 }
 
 fn fetch_class_from_jclass<'local, 'other_local>(
     env: &mut JNIEnv<'local>,
-    jclass: JClass<'other_local>,
+    jclass: &JClass<'other_local>,
 ) -> Result<Arc<Mutex<ClassInternal>>> {
-    let jclass_cp = env.class_name(&jclass)?;
+    let jclass_cp = env.class_name(jclass)?;
 
     fetch_class_from_jclass_internal(env, jclass, &jclass_cp)
 }
 
 fn fetch_class_from_jclass_internal<'local, 'other_local>(
     env: &mut JNIEnv<'local>,
-    jclass: JClass<'other_local>,
+    jclass: &JClass<'other_local>,
     known_jclass_cp: &str,
 ) -> Result<Arc<Mutex<ClassInternal>>> {
     let mut cache = class_cache().lock()?;
