@@ -27,7 +27,7 @@ pub struct Class {
 }
 
 impl Class {
-    pub(super) fn new(internal: Arc<Mutex<ClassInternal>>) -> Self {
+    pub(crate) fn new(internal: Arc<Mutex<ClassInternal>>) -> Self {
         Self { inner: internal }
     }
 
@@ -195,7 +195,7 @@ impl ClassInternal {
 
     /// Creates new [Class] from an [GlobalRef] that stores reference to
     /// [JClass] as internal backend.
-    pub(super) fn new(class_obj: GlobalRef) -> Self {
+    pub(crate) fn new(class_obj: GlobalRef) -> Self {
         Self {
             self_cached_weak_ref: OnceCell::new(),
             superclass: OnceCell::new(),
@@ -208,7 +208,7 @@ impl ClassInternal {
 
     /// Initialize self [Weak] reference to the own entry in [class_cache].
     /// This should be done internally and once.
-    pub(super) unsafe fn initialize_self_weak_ref(&mut self, weak_ref: Weak<Mutex<Self>>) {
+    pub(crate) unsafe fn initialize_self_weak_ref(&mut self, weak_ref: Weak<Mutex<Self>>) {
         self.self_cached_weak_ref
             .set(weak_ref)
             .expect("self_cached_weak_ref should not be initialized yet");
