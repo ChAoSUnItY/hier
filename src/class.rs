@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Display, Pointer};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -17,9 +17,10 @@ use crate::{fetch_class, fetch_class_from_jclass};
 ///
 /// A [Class] is considered as a snapshot, not an realtime projected structure that always
 /// syncs with java side `java/lang/Class`, which means that after internal class cache is
-/// freed (See [HierExt::free_lookup]), this class is not guaranteed for later operations,
-/// and should be update by fetching the latest one (See [HierExt::lookup_class]). Operations
-/// after cache being freed are considered undefined behavior.
+/// freed (See [`HierExt::free_lookup`](crate::HierExt::free_lookup)), this class is not
+/// guaranteed for later operations, and should be update by fetching the latest one (See
+/// [`HierExt::lookup_class`](crate::HierExt::lookup_class)). Operations after cache being
+/// freed are considered undefined behavior.
 #[derive(Clone)]
 pub struct Class {
     inner: Arc<Mutex<ClassInternal>>,
@@ -30,16 +31,8 @@ impl Class {
         Self { inner: internal }
     }
 
-    /// Creates [Class] from [GlobalRef]. If the provided [GlobalRef] is not cached
-    /// then it will lazily cached when needed.
-    pub unsafe fn from_global_ref(glob_ref: GlobalRef) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(ClassInternal::new(glob_ref))),
-        }
-    }
-
-    /// Lookups superclass from given class instance, returns [None] for if current [Class] is
-    /// `Class(java/lang/Object)` or an interface.
+    /// Lookups superclass from given class instance, returns [None] for if current [Class]
+    /// is `Class(java/lang/Object)` or an interface.
     ///
     /// # Example
     ///
@@ -177,6 +170,12 @@ impl Deref for Class {
     }
 }
 
+impl Display for Class {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
 /// A pseudo java class that projects `java/lang/Class`.
 pub struct ClassInternal {
     /// A self weak reference that referenced to the [Arc] holding this
@@ -221,7 +220,7 @@ impl ClassInternal {
                 let Some(superclass) = env.get_superclass(&self.inner)? else {
                     return Ok(None);
                 };
-                let cached_superclass = fetch_class_from_jclass(env, superclass)?;
+                let cached_superclass = fetch_class_from_jclass(env, &superclass)?;
 
                 Ok(Some(Arc::downgrade(&cached_superclass)))
             })
@@ -289,7 +288,7 @@ impl ClassInternal {
                 let interface_class = env
                     .get_object_array_element(interface_arr.deref(), i)?
                     .into();
-                let interface_class = fetch_class_from_jclass(env, interface_class)?;
+                let interface_class = fetch_class_from_jclass(env, &interface_class)?;
 
                 interfaces.push(interface_class);
             }
