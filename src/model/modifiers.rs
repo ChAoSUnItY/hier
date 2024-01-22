@@ -34,8 +34,7 @@ impl Modifiers {
         | Self::Abstract
         | Self::Static
         | Self::Strict;
-    pub const CONSTRUCTOR_MODIFIERS: Modifiers =
-        Self::Public | Self::Protected | Self::Private;
+    pub const CONSTRUCTOR_MODIFIERS: Modifiers = Self::Public | Self::Protected | Self::Private;
     pub const METHOD_MODIFIERS: Modifiers = Self::Public
         | Self::Protected
         | Self::Private
