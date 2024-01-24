@@ -7,7 +7,7 @@ fn main() {
     let mut interfaces = integer_class.interfaces(&mut env).unwrap();
     let interface_names = interfaces
         .iter_mut()
-        .map(|interface_class| interface_class.class_name(&mut env))
+        .map(|interface_class| interface_class.name(&mut env))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 

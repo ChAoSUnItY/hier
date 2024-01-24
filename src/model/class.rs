@@ -55,10 +55,12 @@ impl Class {
     }
 
     /// Fetches class name.
+    ///
+    /// This function is equivalent to `java/lang/Class#getName`.
     // TODO: Distinct other naming fetching functions
-    pub fn class_name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
+    pub fn name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
         let mut class = self.lock()?;
-        class.class_name(env)
+        class.name(env)
     }
 
     /// Returns class' access flags. See [Modifiers] for all possible modifiers that would
@@ -242,7 +244,7 @@ impl ClassInternal {
             .map(|opt_superclass| opt_superclass.and_then(Weak::upgrade))
     }
 
-    fn class_name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
+    fn name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
         self.class_name
             .get_or_try_init(|| {
                 let method_id =
@@ -256,6 +258,7 @@ impl ClassInternal {
                 unsafe {
                     env.get_string_unchecked(class_name.deref().into())
                         .map(Into::<String>::into)
+                        // TODO: Remove replace, see #4
                         .map(|name| name.replace(".", "/"))
                 }
             })
@@ -437,7 +440,7 @@ mod test {
 
         let mut superclass = superclass.unwrap();
 
-        assert_eq!(superclass.class_name(&mut env)?, "java/lang/Number");
+        assert_eq!(superclass.name(&mut env)?, "java/lang/Number");
 
         free_lookup(&mut env)
     }
@@ -488,7 +491,7 @@ mod test {
         let mut class2 = env.lookup_class("java/lang/Float")?;
         let mut common_superclass = class1.common_superclass(&mut env, &mut class2)?;
 
-        assert_eq!(common_superclass.class_name(&mut env)?, "java/lang/Number");
+        assert_eq!(common_superclass.name(&mut env)?, "java/lang/Number");
 
         free_lookup(&mut env)
     }
@@ -519,7 +522,7 @@ mod test {
         let mut interfaces = class.interfaces(&mut env)?;
         let interface_names = interfaces
             .iter_mut()
-            .map(|interface| interface.class_name(&mut env))
+            .map(|interface| interface.name(&mut env))
             .collect::<HierResult<Vec<_>>>()?;
 
         assert_eq!(interface_names, implemented_interfaces);

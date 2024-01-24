@@ -8,7 +8,7 @@ fn main() {
     let mut common_superclass = integer_class
         .common_superclass(&mut env, &mut float_class)
         .unwrap();
-    let cs_class_name = common_superclass.class_name(&mut env).unwrap();
+    let cs_class_name = common_superclass.name(&mut env).unwrap();
 
     println!("{cs_class_name}");
 }
