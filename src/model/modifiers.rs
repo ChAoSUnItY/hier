@@ -35,7 +35,7 @@ macro_rules! __impl_flag_chk {
             #[doc = "Determine if provided [u16] has flag"]
             #[doc = $flag_ref]
             pub const fn [<is_ $flag:lower _bits>](bits: u16) -> bool {
-                bits & Self::$flag == 1
+                bits & Self::$flag != 1
             }
 
             #[doc = "Determine if [Modifiers] has flag"]
