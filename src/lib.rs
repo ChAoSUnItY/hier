@@ -17,12 +17,17 @@ use jni::{
 use once_cell::sync::OnceCell;
 use version::JavaVersion;
 
-pub mod class;
 mod errors;
 #[cfg(feature = "graph")]
 pub mod graph;
-mod modifiers;
 pub mod version;
+
+mod model {
+    pub mod class;
+    pub mod modifiers;
+}
+
+pub use model::*;
 
 pub extern crate jni;
 

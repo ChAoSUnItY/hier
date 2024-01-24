@@ -260,9 +260,11 @@ checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
 name = "hier"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.4.2",
  "graphviz-rust",
  "jni",
  "once_cell",
+ "paste",
  "serial_test",
  "thiserror",
 ]
@@ -401,6 +403,12 @@ dependencies = [
  "smallvec",
  "windows-targets 0.48.5",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
 name = "pest"
