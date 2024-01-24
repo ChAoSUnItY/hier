@@ -12,6 +12,9 @@ macro_rules! __impl_flag_chk {
     ($flag:ident) => {
         __impl_flag_chk!($flag, concat!("[Modifiers::", stringify!($flag), "]"));
     };
+    ($flag:ident as u16) => {
+        __impl_flag_chk!($flag as u16, concat!("[Modifiers::", stringify!($flag), "]"));
+    };
     ($flag:ident, $flag_ref:expr) => {
         paste::paste! {
             #[doc = "Determine if provided [u16] has flag"]
@@ -24,6 +27,21 @@ macro_rules! __impl_flag_chk {
             #[doc = $flag_ref]
             pub const fn [<is_ $flag:lower>](&self) -> bool {
                 Self::contains(self, Self::$flag)
+            }
+        }
+    };
+    ($flag:ident as u16, $flag_ref:expr) => {
+        paste::paste! {
+            #[doc = "Determine if provided [u16] has flag"]
+            #[doc = $flag_ref]
+            pub const fn [<is_ $flag:lower _bits>](bits: u16) -> bool {
+                bits & Self::$flag == 1
+            }
+
+            #[doc = "Determine if [Modifiers] has flag"]
+            #[doc = $flag_ref]
+            pub const fn [<is_ $flag:lower>](&self) -> bool {
+                Self::[<is_ $flag:lower _bits>](self.bits())
             }
         }
     };
@@ -56,6 +74,22 @@ bitflags! {
 }
 
 impl Modifiers {
+    // Bits not (yet) exposed to public API, either:
+    // 1. Have different meanings for fields and methods
+    // 2. Not a Java programming keywords
+    #[allow(non_upper_case_globals)]
+    pub(crate) const Bridge: u16 = 0x0040;
+    #[allow(non_upper_case_globals)]
+    pub(crate) const Varargs: u16 = 0x0080;
+    #[allow(non_upper_case_globals)]
+    pub(crate) const Synthetic: u16 = 0x1000;
+    #[allow(non_upper_case_globals)]
+    pub(crate) const Annotation: u16 = 0x2000;
+    #[allow(non_upper_case_globals)]
+    pub(crate) const Enum: u16 = 0x4000;
+    #[allow(non_upper_case_globals)]
+    pub(crate) const Mandated: u16 = 0x8000;
+
     __impl_flag_chk!(Public);
     __impl_flag_chk!(Private);
     __impl_flag_chk!(Protected);
@@ -68,6 +102,12 @@ impl Modifiers {
     __impl_flag_chk!(Interface);
     __impl_flag_chk!(Abstract);
     __impl_flag_chk!(Strict);
+    __impl_flag_chk!(Bridge as u16);
+    __impl_flag_chk!(Varargs as u16);
+    __impl_flag_chk!(Synthetic as u16);
+    __impl_flag_chk!(Annotation as u16);
+    __impl_flag_chk!(Enum as u16);
+    __impl_flag_chk!(Mandated as u16);
 }
 
 impl Debug for Modifiers {
