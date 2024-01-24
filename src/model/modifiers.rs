@@ -13,7 +13,10 @@ macro_rules! __impl_flag_chk {
         __impl_flag_chk!($flag, concat!("[Modifiers::", stringify!($flag), "]"));
     };
     ($flag:ident as u16) => {
-        __impl_flag_chk!($flag as u16, concat!("[Modifiers::", stringify!($flag), "]"));
+        __impl_flag_chk!(
+            $flag as u16,
+            concat!("[Modifiers::", stringify!($flag), "]")
+        );
     };
     ($flag:ident, $flag_ref:expr) => {
         paste::paste! {
