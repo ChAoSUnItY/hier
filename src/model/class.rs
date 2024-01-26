@@ -167,6 +167,7 @@ impl Class {
     ///
     /// ```rs
     /// ```
+    #[deprecated = "Not part of java.lang.Class, this will be moved to example to demonstrate some internal interactions"]
     pub fn common_superclass<'local>(
         &mut self,
         env: &mut JNIEnv<'local>,
@@ -236,7 +237,7 @@ impl ClassInternal {
                 let Some(superclass) = env.get_superclass(&self.inner)? else {
                     return Ok(None);
                 };
-                let cached_superclass = fetch_class_from_jclass(env, &superclass)?;
+                let cached_superclass = fetch_class_from_jclass(env, &superclass, None)?;
 
                 Ok(Some(Arc::downgrade(&cached_superclass)))
             })
@@ -301,7 +302,7 @@ impl ClassInternal {
                 let interface_class = env
                     .get_object_array_element(interface_arr.deref(), i)?
                     .into();
-                let interface_class = fetch_class_from_jclass(env, &interface_class)?;
+                let interface_class = fetch_class_from_jclass(env, &interface_class, None)?;
 
                 interfaces.push(interface_class);
             }
@@ -346,6 +347,7 @@ impl ClassInternal {
         self.modifiers(env).map(Modifiers::is_synthetic_bits)
     }
 
+    #[deprecated = "Not part of java.lang.Class, this will be moved to example to demonstrate some internal interactions"]
     fn common_superclass<'local>(
         &mut self,
         env: &mut JNIEnv<'local>,
@@ -407,6 +409,7 @@ impl Display for ClassInternal {
 #[cfg(test)]
 mod test {
     use jni::JNIEnv;
+    use rstest::rstest;
     use serial_test::serial;
 
     use crate::{class_cache, errors::HierResult, jni_env, HierExt};
@@ -442,6 +445,35 @@ mod test {
         let mut superclass = superclass.unwrap();
 
         assert_eq!(superclass.name(&mut env)?, "java.lang.Number");
+
+        free_lookup(&mut env)
+    }
+
+    #[rstest]
+    #[case("void", "void")]
+    #[case("int", "int")]
+    #[case("int[]", "[I")]
+    #[case("java.lang.Class", "java.lang.Class")]
+    #[case("java.lang.Class[]", "[Ljava.lang.Class;")]
+    #[case("java.util.Map$Entry", "java.util.Map$Entry")]
+    #[serial]
+    fn test_class_name(
+        #[case] input: &'static str,
+        #[case] get_name_result: &'static str,
+    ) -> HierResult<()> {
+        let mut env = jni_env()?;
+
+        assert_eq!(env.lookup_class(input)?.name(&mut env)?, get_name_result);
+
+        free_lookup(&mut env)
+    }
+
+    #[test]
+    #[serial]
+    fn test_unsupported_class_name() -> HierResult<()> {
+        let mut env = jni_env()?;
+
+        assert!(env.lookup_class("void[]").is_err());
 
         free_lookup(&mut env)
     }

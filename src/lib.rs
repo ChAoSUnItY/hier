@@ -7,12 +7,12 @@ use std::{
 };
 
 use class::{Class, ClassInternal};
-use classpath::ClassPath;
+use classpath::{ClassPath, DESC_TO_WRAPPER_CLASS_CP, PRIMITIVE_TYPES_TO_DESC};
 use errors::HierResult as Result;
 use jni::{
     descriptors::Desc,
     objects::{JClass, JValueGen},
-    signature::ReturnType,
+    signature::{JavaType, ReturnType},
     InitArgsBuilder, JNIEnv, JNIVersion, JavaVM,
 };
 use once_cell::sync::OnceCell;
@@ -75,24 +75,47 @@ fn fetch_class<'local>(
         Ok(cached_class.clone())
     } else {
         drop(cache);
-        let jclass = env.find_class(class_path)?;
-        fetch_class_from_jclass(env, &jclass)
+        if PRIMITIVE_TYPES_TO_DESC.contains_key(class_path) {
+            fetch_primitive_class(env, class_path)
+        } else {
+            let jclass = env.find_class(class_path)?;
+            fetch_class_from_jclass(env, &jclass, Some(class_path))
+        }
     }
 }
 
-fn fetch_class_from_jclass<'local, 'other_local>(
+fn fetch_class_from_jclass<'local, 'other_local, 'str>(
     env: &mut JNIEnv<'local>,
     jclass: &JClass<'other_local>,
+    known_jclass_cp: Option<&'str str>,
 ) -> Result<Arc<Mutex<ClassInternal>>> {
-    let jclass_cp = env.class_name(jclass)?;
+    match known_jclass_cp {
+        Some(cp) => fetch_class_from_jclass_internal(env, jclass, cp),
+        None => {
+            let method_id = env.get_method_id(
+                ClassInternal::CLASS_JNI_CP,
+                "getName",
+                "()Ljava/lang/String;",
+            )?;
+            let class_name = unsafe {
+                env.call_method_unchecked(jclass, method_id, ReturnType::Object, &[])
+                    .and_then(JValueGen::l)?
+            };
+            let class_name = env.auto_local(class_name);
+            let cp = unsafe {
+                env.get_string_unchecked(class_name.deref().into())
+                    .map(Into::<String>::into)?
+            };
 
-    fetch_class_from_jclass_internal(env, jclass, &jclass_cp)
+            fetch_class_from_jclass_internal(env, jclass, &cp)
+        }
+    }
 }
 
-fn fetch_class_from_jclass_internal<'local, 'other_local>(
+fn fetch_class_from_jclass_internal<'local, 'other_local, 'str>(
     env: &mut JNIEnv<'local>,
     jclass: &JClass<'other_local>,
-    known_jclass_cp: &str,
+    known_jclass_cp: &'str str,
 ) -> Result<Arc<Mutex<ClassInternal>>> {
     let mut cache = class_cache().lock()?;
     let glob_ref = env.new_global_ref(jclass)?;
@@ -107,6 +130,31 @@ fn fetch_class_from_jclass_internal<'local, 'other_local>(
         .entry(known_jclass_cp.to_string())
         .or_insert(class)
         .clone())
+}
+
+fn fetch_primitive_class<'local>(
+    env: &mut JNIEnv<'local>,
+    primitive_name: &str,
+) -> Result<Arc<Mutex<ClassInternal>>> {
+    let wrapper_class_cp = PRIMITIVE_TYPES_TO_DESC
+        .get(primitive_name)
+        .and_then(|desc| DESC_TO_WRAPPER_CLASS_CP.get(desc))
+        .unwrap();
+    let static_field_id = env.get_static_field_id(
+        wrapper_class_cp,
+        "TYPE",
+        format!("L{};", ClassInternal::CLASS_JNI_CP),
+    )?;
+    let wrapper_class: JClass = env
+        .get_static_field_unchecked(
+            wrapper_class_cp,
+            static_field_id,
+            JavaType::Object(ClassInternal::CLASS_JNI_CP.to_string()),
+        )
+        .and_then(JValueGen::l)?
+        .into();
+
+    fetch_class_from_jclass_internal(env, &wrapper_class, primitive_name)
 }
 
 /// Frees jclass cache.
@@ -196,34 +244,7 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         unsafe {
             self.get_string_unchecked(class_name.deref().into())
                 .map(Into::<String>::into)
-                .map(|name| name.replace(".", "/"))
                 .map_err(Into::into)
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{errors::HierResult, jni_env, HierExt};
-    use serial_test::serial;
-
-    #[test]
-    #[serial]
-    fn test_lookup_class() -> HierResult<()> {
-        let mut jni = jni_env()?;
-
-        // TODO: Resolve #7 for this
-        // assert_eq!(jni.lookup_class("int")?.name(&mut jni)?, "int");
-        // assert_eq!(jni.lookup_class("int[]")?.name(&mut jni)?, "[I");
-        assert_eq!(
-            jni.lookup_class("java.lang.Class")?.name(&mut jni)?,
-            "java.lang.Class"
-        );
-        assert_eq!(
-            jni.lookup_class("java.lang.Class[]")?.name(&mut jni)?,
-            "[Ljava.lang.Class;"
-        );
-
-        Ok(())
     }
 }
