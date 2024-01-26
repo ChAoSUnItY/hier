@@ -3,7 +3,7 @@ use std::sync::PoisonError;
 use jni::errors::{JniError, StartJvmError};
 use thiserror::Error;
 
-pub type HierResult<T> = Result<T, HierError>;
+pub type HeirResult<T> = Result<T, HierError>;
 
 #[derive(Error, Debug)]
 pub enum HierError {
