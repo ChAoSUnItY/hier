@@ -4,8 +4,6 @@ use hier::jni_env;
 use hier::HierExt;
 use jni::JNIEnv;
 
-/// In this example, you'll see how to interact safely with
-/// [`ClassInternal::self_cached_weak_ref`](hier::class::ClassInternal::self_cached_weak_ref)
 fn main() {
     let mut env = jni_env().unwrap();
     let mut integer_class = env.lookup_class("java.lang.Integer").unwrap();
