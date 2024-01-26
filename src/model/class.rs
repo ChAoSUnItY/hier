@@ -237,7 +237,7 @@ impl ClassInternal {
                 let Some(superclass) = env.get_superclass(&self.inner)? else {
                     return Ok(None);
                 };
-                let cached_superclass = fetch_class_from_jclass(env, &superclass)?;
+                let cached_superclass = fetch_class_from_jclass(env, &superclass, None)?;
 
                 Ok(Some(Arc::downgrade(&cached_superclass)))
             })
@@ -302,7 +302,7 @@ impl ClassInternal {
                 let interface_class = env
                     .get_object_array_element(interface_arr.deref(), i)?
                     .into();
-                let interface_class = fetch_class_from_jclass(env, &interface_class)?;
+                let interface_class = fetch_class_from_jclass(env, &interface_class, None)?;
 
                 interfaces.push(interface_class);
             }
@@ -464,6 +464,16 @@ mod test {
         let mut env = jni_env()?;
 
         assert_eq!(env.lookup_class(input)?.name(&mut env)?, get_name_result);
+
+        free_lookup(&mut env)
+    }
+
+    #[test]
+    #[serial]
+    fn test_unsupported_class_name() -> HierResult<()> {
+        let mut env = jni_env()?;
+
+        assert!(env.lookup_class("void[]").is_err());
 
         free_lookup(&mut env)
     }

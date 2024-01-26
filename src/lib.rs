@@ -79,24 +79,43 @@ fn fetch_class<'local>(
             fetch_primitive_class(env, class_path)
         } else {
             let jclass = env.find_class(class_path)?;
-            fetch_class_from_jclass(env, &jclass)
+            fetch_class_from_jclass(env, &jclass, Some(class_path))
         }
     }
 }
 
-fn fetch_class_from_jclass<'local, 'other_local>(
+fn fetch_class_from_jclass<'local, 'other_local, 'str>(
     env: &mut JNIEnv<'local>,
     jclass: &JClass<'other_local>,
+    known_jclass_cp: Option<&'str str>,
 ) -> Result<Arc<Mutex<ClassInternal>>> {
-    let jclass_cp = env.class_name(jclass)?;
+    match known_jclass_cp {
+        Some(cp) => fetch_class_from_jclass_internal(env, jclass, cp),
+        None => {
+            let method_id = env.get_method_id(
+                ClassInternal::CLASS_JNI_CP,
+                "getName",
+                "()Ljava/lang/String;",
+            )?;
+            let class_name = unsafe {
+                env.call_method_unchecked(jclass, method_id, ReturnType::Object, &[])
+                    .and_then(JValueGen::l)?
+            };
+            let class_name = env.auto_local(class_name);
+            let cp = unsafe {
+                env.get_string_unchecked(class_name.deref().into())
+                    .map(Into::<String>::into)?
+            };
 
-    fetch_class_from_jclass_internal(env, jclass, &jclass_cp)
+            fetch_class_from_jclass_internal(env, jclass, &cp)
+        }
+    }
 }
 
-fn fetch_class_from_jclass_internal<'local, 'other_local>(
+fn fetch_class_from_jclass_internal<'local, 'other_local, 'str>(
     env: &mut JNIEnv<'local>,
     jclass: &JClass<'other_local>,
-    known_jclass_cp: &str,
+    known_jclass_cp: &'str str,
 ) -> Result<Arc<Mutex<ClassInternal>>> {
     let mut cache = class_cache().lock()?;
     let glob_ref = env.new_global_ref(jclass)?;
@@ -225,7 +244,6 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         unsafe {
             self.get_string_unchecked(class_name.deref().into())
                 .map(Into::<String>::into)
-                .map(|name| name.replace(".", "/"))
                 .map_err(Into::into)
         }
     }
