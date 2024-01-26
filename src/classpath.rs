@@ -1,3 +1,28 @@
+use phf::phf_map;
+
+pub(crate) static PRIMITIVE_TYPES_TO_DESC: phf::Map<&'static str, &'static str> = phf_map! {
+    "void" => "V",
+    "boolean" => "Z",
+    "byte" => "B",
+    "char" => "C",
+    "short" => "S",
+    "int" => "I",
+    "long" => "J",
+    "float" => "F",
+    "double" => "D",
+};
+pub(crate) static DESC_TO_WRAPPER_CLASS_CP: phf::Map<&'static str, &'static str> = phf_map! {
+    "V" => "java/lang/Void",
+    "Z" => "java/lang/Boolean",
+    "B" => "java/lang/Byte",
+    "C" => "java/lang/Character",
+    "S" => "java/lang/Short",
+    "I" => "java/lang/Integer",
+    "J" => "java/lang/Long",
+    "F" => "java/lang/Float",
+    "D" => "java/lang/Double",
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClassPath {
     Java(String),
@@ -12,22 +37,26 @@ impl ClassPath {
                 let array_dim = cp.matches("[]").count();
 
                 if array_dim > 0 {
-                    jni_cp = format!("{}L{jni_cp};", "[".repeat(array_dim));
+                    jni_cp = if let Some(desc) = PRIMITIVE_TYPES_TO_DESC.get(&jni_cp.as_str()) {
+                        format!("{}{desc}", "[".repeat(array_dim))
+                    } else {
+                        format!("{}L{jni_cp};", "[".repeat(array_dim))
+                    };
                 }
 
                 Self::JNI(jni_cp)
             }
             Self::JNI(cp) => {
-                let mut java_cp = cp.replace("/", ".");
+                let mut java_cp = cp.replace("/", ".").replace("[", "");
                 let array_dim = cp.matches("[").count();
 
                 if array_dim > 0 {
-                    java_cp = java_cp
-                        .chars()
-                        .skip_while(|c| *c == '[')
-                        .skip(1)
-                        .take_while(|c| *c != ';')
-                        .collect();
+                    if !PRIMITIVE_TYPES_TO_DESC
+                        .values()
+                        .any(|desc| java_cp.starts_with(desc))
+                    {
+                        java_cp = java_cp.chars().skip(1).take_while(|c| *c != ';').collect();
+                    }
 
                     java_cp = format!("{java_cp}{}", "[]".repeat(array_dim));
                 }

@@ -167,6 +167,7 @@ impl Class {
     ///
     /// ```rs
     /// ```
+    #[deprecated = "Not part of java.lang.Class, this will be moved to example to demonstrate some internal interactions"]
     pub fn common_superclass<'local>(
         &mut self,
         env: &mut JNIEnv<'local>,
@@ -346,6 +347,7 @@ impl ClassInternal {
         self.modifiers(env).map(Modifiers::is_synthetic_bits)
     }
 
+    #[deprecated = "Not part of java.lang.Class, this will be moved to example to demonstrate some internal interactions"]
     fn common_superclass<'local>(
         &mut self,
         env: &mut JNIEnv<'local>,
@@ -407,6 +409,7 @@ impl Display for ClassInternal {
 #[cfg(test)]
 mod test {
     use jni::JNIEnv;
+    use rstest::rstest;
     use serial_test::serial;
 
     use crate::{class_cache, errors::HierResult, jni_env, HierExt};
@@ -442,6 +445,25 @@ mod test {
         let mut superclass = superclass.unwrap();
 
         assert_eq!(superclass.name(&mut env)?, "java.lang.Number");
+
+        free_lookup(&mut env)
+    }
+
+    #[rstest]
+    #[case("void", "void")]
+    #[case("int", "int")]
+    #[case("int[]", "[I")]
+    #[case("java.lang.Class", "java.lang.Class")]
+    #[case("java.lang.Class[]", "[Ljava.lang.Class;")]
+    #[case("java.util.Map$Entry", "java.util.Map$Entry")]
+    #[serial]
+    fn test_class_name(
+        #[case] input: &'static str,
+        #[case] get_name_result: &'static str,
+    ) -> HierResult<()> {
+        let mut env = jni_env()?;
+
+        assert_eq!(env.lookup_class(input)?.name(&mut env)?, get_name_result);
 
         free_lookup(&mut env)
     }
