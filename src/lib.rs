@@ -201,3 +201,29 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{errors::HierResult, jni_env, HierExt};
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_lookup_class() -> HierResult<()> {
+        let mut jni = jni_env()?;
+
+        // TODO: Resolve #7 for this
+        // assert_eq!(jni.lookup_class("int")?.name(&mut jni)?, "int");
+        // assert_eq!(jni.lookup_class("int[]")?.name(&mut jni)?, "[I");
+        assert_eq!(
+            jni.lookup_class("java.lang.Class")?.name(&mut jni)?,
+            "java.lang.Class"
+        );
+        assert_eq!(
+            jni.lookup_class("java.lang.Class[]")?.name(&mut jni)?,
+            "[Ljava.lang.Class;"
+        );
+
+        Ok(())
+    }
+}
