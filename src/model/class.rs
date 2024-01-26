@@ -12,11 +12,11 @@ use crate::modifiers::Modifiers;
 
 use crate::{fetch_class, fetch_class_from_jclass};
 
-/// A rust side pseudo class that projects java side `java/lang/Class`, used for simplify
+/// A rust side pseudo class that projects java side `java.lang.Class`, used for simplify
 /// class property lookup and other class-related operations.
 ///
 /// A [Class] is considered as a snapshot, not an realtime projected structure that always
-/// syncs with java side `java/lang/Class`, which means that after internal class cache is
+/// syncs with java side `java.lang.Class`, which means that after internal class cache is
 /// freed (See [`HierExt::free_lookup`](crate::HierExt::free_lookup)), this class is not
 /// guaranteed for later operations, and should be update by fetching the latest one (See
 /// [`HierExt::lookup_class`](crate::HierExt::lookup_class)). Operations after cache being
@@ -27,25 +27,25 @@ pub struct Class {
 }
 
 impl Class {
-    pub const CLASS_CP: &'static str = ClassInternal::CLASS_CP;
-    pub const OBJECT_CP: &'static str = ClassInternal::OBJECT_CP;
+    pub const CLASS_CP: &'static str = ClassInternal::CLASS_JNI_CP;
+    pub const OBJECT_CP: &'static str = ClassInternal::OBJECT_JNI_CP;
 
     pub(crate) fn new(internal: Arc<Mutex<ClassInternal>>) -> Self {
         Self { inner: internal }
     }
 
     /// Lookups superclass from given class instance, returns [None] for if current [Class]
-    /// is `Class(java/lang/Object)` or an interface.
+    /// is `Class(java.lang.Object)` or an interface.
     ///
     /// # Example
     ///
     /// ```rs
     /// let mut env = jni_env()?;
-    /// let mut class = env.lookup_class("java/lang/Integer")?;
+    /// let mut class = env.lookup_class("java.lang.Integer")?;
     /// let mut superclass = class.superclass(&mut env)?;
     /// let superclass_name = superclass.class_name(&mut env)?;
     ///
-    /// assert_eq!(superclass_name, "java/lang/Number");
+    /// assert_eq!(superclass_name, "java.lang.Number");
     /// ```
     pub fn superclass<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<Option<Self>> {
         let mut class = self.lock()?;
@@ -56,7 +56,7 @@ impl Class {
 
     /// Fetches class name.
     ///
-    /// This function is equivalent to `java/lang/Class#getName`.
+    /// This function is equivalent to `java.lang.Class#getName`.
     // TODO: Distinct other naming fetching functions
     pub fn name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
         let mut class = self.lock()?;
@@ -70,7 +70,7 @@ impl Class {
     ///
     /// ```rs
     /// let mut env = jni_env()?;
-    /// let mut class = env.lookup_class("java/lang/String")?;
+    /// let mut class = env.lookup_class("java.lang.String")?;
     /// let modifiers = class.modifiers(&mut env)?;
     ///
     /// assert_eq!(modifiers, Modifiers::Public & Modifiers::Final)
@@ -98,7 +98,7 @@ impl Class {
     ///
     /// ```rs
     /// let mut env = jni_env();
-    /// let mut class = env.lookup_class("java/lang/Integer")?;
+    /// let mut class = env.lookup_class("java.lang.Integer")?;
     /// let mut interfaces = class.interfaces(&mut env)?;
     /// let interface_names = interfaces
     ///     .iter_mut()
@@ -125,8 +125,8 @@ impl Class {
     ///
     /// ```rs
     /// let mut env = jni_env()?;
-    /// let mut class1 = env.lookup_class("java/lang/Integer")?;
-    /// let mut class2 = env.lookup_class("java/lang/Number")?;
+    /// let mut class1 = env.lookup_class("java.lang.Integer")?;
+    /// let mut class2 = env.lookup_class("java.lang.Number")?;
     /// let is_assignable = class2.is_assignable_from(&mut class1)?;
     ///
     /// assert_eq!(is_assignable, true);
@@ -161,7 +161,7 @@ impl Class {
 
     /// Returns the 2 class' most common superclass.
     ///
-    /// If 1 of the classes is interface, then returns `JClass("java/lang/Object")`.
+    /// If 1 of the classes is interface, then returns `JClass("java.lang.Object")`.
     ///
     /// # Example
     ///
@@ -192,7 +192,7 @@ impl Display for Class {
     }
 }
 
-/// A pseudo java class that projects `java/lang/Class`.
+/// A pseudo java class that projects `java.lang.Class`.
 pub struct ClassInternal {
     /// A self weak reference that referenced to the [Arc] holding this
     /// [Class] instance in [class_cache]. This is guaranteed to be always
@@ -206,8 +206,8 @@ pub struct ClassInternal {
 }
 
 impl ClassInternal {
-    pub(crate) const CLASS_CP: &'static str = "java/lang/Class";
-    pub(crate) const OBJECT_CP: &'static str = "java/lang/Object";
+    pub(crate) const CLASS_JNI_CP: &'static str = "java/lang/Class";
+    pub(crate) const OBJECT_JNI_CP: &'static str = "java/lang/Object";
 
     /// Creates new [Class] from an [GlobalRef] that stores reference to
     /// [JClass] as internal backend.
@@ -248,7 +248,7 @@ impl ClassInternal {
         self.class_name
             .get_or_try_init(|| {
                 let method_id =
-                    env.get_method_id(Self::CLASS_CP, "getName", "()Ljava/lang/String;")?;
+                    env.get_method_id(Self::CLASS_JNI_CP, "getName", "()Ljava/lang/String;")?;
                 let class_name = unsafe {
                     env.call_method_unchecked(&self.inner, method_id, ReturnType::Object, &[])
                         .and_then(JValueGen::l)?
@@ -258,8 +258,6 @@ impl ClassInternal {
                 unsafe {
                     env.get_string_unchecked(class_name.deref().into())
                         .map(Into::<String>::into)
-                        // TODO: Remove replace, see #4
-                        .map(|name| name.replace(".", "/"))
                 }
             })
             .cloned()
@@ -269,7 +267,7 @@ impl ClassInternal {
     fn modifiers<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<u16> {
         self.modifiers
             .get_or_try_init(|| {
-                let method_id = env.get_method_id(Self::CLASS_CP, "getModifiers", "()I")?;
+                let method_id = env.get_method_id(Self::CLASS_JNI_CP, "getModifiers", "()I")?;
 
                 unsafe {
                     env.call_method_unchecked(
@@ -289,7 +287,7 @@ impl ClassInternal {
     fn interfaces<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<&Vec<Arc<Mutex<Self>>>> {
         self.interfaces.get_or_try_init(|| {
             let method_id =
-                env.get_method_id(Self::CLASS_CP, "getInterfaces", "()[Ljava/lang/Class;")?;
+                env.get_method_id(Self::CLASS_JNI_CP, "getInterfaces", "()[Ljava/lang/Class;")?;
             let interface_arr: JObjectArray = unsafe {
                 env.call_method_unchecked(&self.inner, method_id, ReturnType::Array, &[])
                     .and_then(JValueGen::l)?
@@ -319,8 +317,11 @@ impl ClassInternal {
     ) -> Result<bool> {
         // FIXME: Should we explore the both classes class hierarchy and so the
         // whole hierarchy tree can be cached and used later for better performance?
-        let method_id =
-            env.get_method_id(Self::CLASS_CP, "isAssignableFrom", "(Ljava/lang/Class;)Z")?;
+        let method_id = env.get_method_id(
+            Self::CLASS_JNI_CP,
+            "isAssignableFrom",
+            "(Ljava/lang/Class;)Z",
+        )?;
         unsafe {
             env.call_method_unchecked(
                 &self.inner,
@@ -371,7 +372,7 @@ impl ClassInternal {
 
         cls1 = match self.superclass(env)? {
             Some(cls) => cls,
-            None => return fetch_class(env, Self::OBJECT_CP),
+            None => return fetch_class(env, Self::OBJECT_JNI_CP),
         };
 
         loop {
@@ -387,7 +388,7 @@ impl ClassInternal {
                     drop(cls1_guard);
                     cls1 = cls;
                 }
-                None => return fetch_class(env, Self::OBJECT_CP),
+                None => return fetch_class(env, Self::OBJECT_JNI_CP),
             };
         }
     }
@@ -418,7 +419,7 @@ mod test {
     #[serial]
     fn test_lookup_caching() -> HierResult<()> {
         let mut env = jni_env()?;
-        let _class1 = env.lookup_class("java/lang/Object")?;
+        let _class1 = env.lookup_class("java.lang.Object")?;
 
         assert_eq!(class_cache().lock()?.len(), 1);
 
@@ -433,14 +434,14 @@ mod test {
     #[serial]
     fn test_superclass() -> HierResult<()> {
         let mut env = jni_env()?;
-        let mut class = env.lookup_class("java/lang/Integer")?;
+        let mut class = env.lookup_class("java.lang.Integer")?;
         let superclass = class.superclass(&mut env)?;
 
         assert!(superclass.is_some());
 
         let mut superclass = superclass.unwrap();
 
-        assert_eq!(superclass.name(&mut env)?, "java/lang/Number");
+        assert_eq!(superclass.name(&mut env)?, "java.lang.Number");
 
         free_lookup(&mut env)
     }
@@ -449,7 +450,7 @@ mod test {
     #[serial]
     fn test_is_assignable_from() -> HierResult<()> {
         let mut env = jni_env()?;
-        let mut class1 = env.lookup_class("java/lang/Integer")?;
+        let mut class1 = env.lookup_class("java.lang.Integer")?;
         let superclass = class1.superclass(&mut env)?;
 
         assert!(superclass.is_some());
@@ -465,7 +466,7 @@ mod test {
     #[serial]
     fn test_is_interface() -> HierResult<()> {
         let mut env = jni_env()?;
-        let mut interface = env.lookup_class("java/lang/Comparable")?;
+        let mut interface = env.lookup_class("java.lang.Comparable")?;
 
         assert!(interface.is_interface(&mut env)?);
 
@@ -476,7 +477,7 @@ mod test {
     #[serial]
     fn test_is_annotation() -> HierResult<()> {
         let mut env = jni_env()?;
-        let mut annotation = env.lookup_class("java/lang/Override")?;
+        let mut annotation = env.lookup_class("java.lang.Override")?;
 
         assert!(annotation.is_annotation(&mut env)?);
 
@@ -487,11 +488,11 @@ mod test {
     #[serial]
     fn test_number_common_super_class() -> HierResult<()> {
         let mut env = jni_env()?;
-        let mut class1 = env.lookup_class("java/lang/Integer")?;
-        let mut class2 = env.lookup_class("java/lang/Float")?;
+        let mut class1 = env.lookup_class("java.lang.Integer")?;
+        let mut class2 = env.lookup_class("java.lang.Float")?;
         let mut common_superclass = class1.common_superclass(&mut env, &mut class2)?;
 
-        assert_eq!(common_superclass.name(&mut env)?, "java/lang/Number");
+        assert_eq!(common_superclass.name(&mut env)?, "java.lang.Number");
 
         free_lookup(&mut env)
     }
@@ -502,23 +503,23 @@ mod test {
         not(any(jvm_v8, jvm_v11, jvm_v17, jvm_v21)),
         ignore = "No Java LTS version provided"
     )]
-    /// Tests all implemented interfaces on `java/lang/Integer`
-    /// (non recursively to super class which is `java/lang/Number`)
+    /// Tests all implemented interfaces on `java.lang.Integer`
+    /// (non recursively to super class which is `java.lang.Number`)
     fn test_interfaces() -> HierResult<()> {
         let implemented_interfaces = if cfg!(any(jvm_v8, jvm_v11)) {
-            vec!["java/lang/Comparable"]
+            vec!["java.lang.Comparable"]
         } else if cfg!(any(jvm_v17, jvm_v21)) {
             vec![
-                "java/lang/Comparable",
-                "java/lang/constant/Constable",
-                "java/lang/constant/ConstantDesc",
+                "java.lang.Comparable",
+                "java.lang.constant.Constable",
+                "java.lang.constant.ConstantDesc",
             ]
         } else {
             unreachable!()
         };
 
         let mut env = jni_env()?;
-        let mut class = env.lookup_class("java/lang/Integer")?;
+        let mut class = env.lookup_class("java.lang.Integer")?;
         let mut interfaces = class.interfaces(&mut env)?;
         let interface_names = interfaces
             .iter_mut()

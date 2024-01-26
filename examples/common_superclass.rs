@@ -3,8 +3,8 @@ use hier::HierExt;
 
 fn main() {
     let mut env = jni_env().unwrap();
-    let mut integer_class = env.lookup_class("java/lang/Integer").unwrap();
-    let mut float_class = env.lookup_class("java/lang/Float").unwrap();
+    let mut integer_class = env.lookup_class("java.lang.Integer").unwrap();
+    let mut float_class = env.lookup_class("java.lang.Float").unwrap();
     let mut common_superclass = integer_class
         .common_superclass(&mut env, &mut float_class)
         .unwrap();

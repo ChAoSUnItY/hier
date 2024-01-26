@@ -7,6 +7,7 @@ use std::{
 };
 
 use class::{Class, ClassInternal};
+use classpath::ClassPath;
 use errors::HierResult as Result;
 use jni::{
     descriptors::Desc,
@@ -17,6 +18,7 @@ use jni::{
 use once_cell::sync::OnceCell;
 use version::JavaVersion;
 
+pub mod classpath;
 mod errors;
 #[cfg(feature = "graph")]
 pub mod graph;
@@ -123,7 +125,9 @@ pub trait HierExt<'local> {
 
     /// Lookups class from given class path, if class is found, then caches and returns
     /// it.
-    fn lookup_class(&mut self, class_path: &str) -> Result<Class>;
+    fn lookup_class<CP>(&mut self, class_path: CP) -> Result<Class>
+    where
+        CP: Into<ClassPath>;
 
     /// Frees the class cache.
     ///
@@ -164,8 +168,13 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         }
     }
 
-    fn lookup_class(&mut self, class_path: &str) -> Result<Class> {
-        fetch_class(self, class_path).map(Class::new)
+    fn lookup_class<CP>(&mut self, class_path: CP) -> Result<Class>
+    where
+        CP: Into<ClassPath>,
+    {
+        let class_path: String = class_path.into().as_jni().into();
+
+        fetch_class(self, &class_path).map(Class::new)
     }
 
     fn class_name<'other_local, T>(&mut self, class: T) -> Result<String>
@@ -173,8 +182,11 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
         T: Desc<'local, JClass<'other_local>>,
     {
         let class = class.lookup(self)?;
-        let method_id =
-            self.get_method_id(ClassInternal::CLASS_CP, "getName", "()Ljava/lang/String;")?;
+        let method_id = self.get_method_id(
+            ClassInternal::CLASS_JNI_CP,
+            "getName",
+            "()Ljava/lang/String;",
+        )?;
         let class_name = unsafe {
             self.call_method_unchecked(class.as_ref(), method_id, ReturnType::Object, &[])
                 .and_then(JValueGen::l)?
@@ -187,5 +199,31 @@ impl<'local> HierExt<'local> for JNIEnv<'local> {
                 .map(|name| name.replace(".", "/"))
                 .map_err(Into::into)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{errors::HierResult, jni_env, HierExt};
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_lookup_class() -> HierResult<()> {
+        let mut jni = jni_env()?;
+
+        // TODO: Resolve #7 for this
+        // assert_eq!(jni.lookup_class("int")?.name(&mut jni)?, "int");
+        // assert_eq!(jni.lookup_class("int[]")?.name(&mut jni)?, "[I");
+        assert_eq!(
+            jni.lookup_class("java.lang.Class")?.name(&mut jni)?,
+            "java.lang.Class"
+        );
+        assert_eq!(
+            jni.lookup_class("java.lang.Class[]")?.name(&mut jni)?,
+            "[Ljava.lang.Class;"
+        );
+
+        Ok(())
     }
 }
