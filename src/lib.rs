@@ -8,7 +8,7 @@ use std::{
 
 use class::{Class, ClassInternal};
 use classpath::{ClassPath, DESC_TO_WRAPPER_CLASS_CP, PRIMITIVE_TYPES_TO_DESC};
-use errors::HeirResult as Result;
+use errors::HierResult as Result;
 use jni::{
     descriptors::Desc,
     objects::{JClass, JValueGen},

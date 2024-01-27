@@ -7,7 +7,7 @@ use jni::signature::{Primitive, ReturnType};
 use jni::JNIEnv;
 use once_cell::sync::OnceCell;
 
-use crate::errors::HeirResult as Result;
+use crate::errors::HierResult as Result;
 use crate::modifiers::Modifiers;
 
 use crate::fetch_class_from_jclass;
@@ -332,15 +332,15 @@ mod test {
     use rstest::rstest;
     use serial_test::serial;
 
-    use crate::{class::Class, class_cache, errors::HeirResult, jni_env, HierExt};
+    use crate::{class::Class, class_cache, errors::HierResult, jni_env, HierExt};
 
-    fn free_lookup<'local>(env: &mut JNIEnv<'local>) -> HeirResult<()> {
+    fn free_lookup<'local>(env: &mut JNIEnv<'local>) -> HierResult<()> {
         unsafe { env.free_lookup() }
     }
 
     #[test]
     #[serial]
-    fn test_lookup_caching() -> HeirResult<()> {
+    fn test_lookup_caching() -> HierResult<()> {
         let mut env = jni_env()?;
         let _class1 = env.lookup_class("java.lang.Object")?;
 
@@ -355,7 +355,7 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_superclass() -> HeirResult<()> {
+    fn test_superclass() -> HierResult<()> {
         let mut env = jni_env()?;
         let mut class = env.lookup_class("java.lang.Integer")?;
         let superclass = class.superclass(&mut env)?;
@@ -380,7 +380,7 @@ mod test {
     fn test_class_name(
         #[case] input: &'static str,
         #[case] get_name_result: &'static str,
-    ) -> HeirResult<()> {
+    ) -> HierResult<()> {
         let mut env = jni_env()?;
 
         assert_eq!(env.lookup_class(input)?.name(&mut env)?, get_name_result);
@@ -390,7 +390,7 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_unsupported_class_name() -> HeirResult<()> {
+    fn test_unsupported_class_name() -> HierResult<()> {
         let mut env = jni_env()?;
 
         assert!(env.lookup_class("void[]").is_err());
@@ -400,7 +400,7 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_is_assignable_from() -> HeirResult<()> {
+    fn test_is_assignable_from() -> HierResult<()> {
         let mut env = jni_env()?;
         let mut class1 = env.lookup_class("java.lang.Integer")?;
         let superclass = class1.superclass(&mut env)?;
@@ -416,7 +416,7 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_is_interface() -> HeirResult<()> {
+    fn test_is_interface() -> HierResult<()> {
         let mut env = jni_env()?;
         let mut interface = env.lookup_class("java.lang.Comparable")?;
 
@@ -427,7 +427,7 @@ mod test {
 
     #[test]
     #[serial]
-    fn test_is_annotation() -> HeirResult<()> {
+    fn test_is_annotation() -> HierResult<()> {
         let mut env = jni_env()?;
         let mut annotation = env.lookup_class("java.lang.Override")?;
 
@@ -444,12 +444,12 @@ mod test {
         #[case] class1: &'static str,
         #[case] class2: &'static str,
         #[case] common_superclass_name: &'static str,
-    ) -> HeirResult<()> {
+    ) -> HierResult<()> {
         fn find_most_common_superclass(
             env: &mut JNIEnv,
             class1: &mut Class,
             class2: &mut Class,
-        ) -> HeirResult<Class> {
+        ) -> HierResult<Class> {
             if class2.is_assignable_from(env, class1)? {
                 return Ok(class1.clone());
             }
@@ -494,7 +494,7 @@ mod test {
     )]
     /// Tests all implemented interfaces on `java.lang.Integer`
     /// (non recursively to super class which is `java.lang.Number`)
-    fn test_interfaces() -> HeirResult<()> {
+    fn test_interfaces() -> HierResult<()> {
         let implemented_interfaces = if cfg!(any(jvm_v8, jvm_v11)) {
             vec!["java.lang.Comparable"]
         } else if cfg!(any(jvm_v17, jvm_v21)) {
@@ -513,7 +513,7 @@ mod test {
         let interface_names = interfaces
             .iter_mut()
             .map(|interface| interface.name(&mut env))
-            .collect::<HeirResult<Vec<_>>>()?;
+            .collect::<HierResult<Vec<_>>>()?;
 
         assert_eq!(interface_names, implemented_interfaces);
 
