@@ -74,7 +74,7 @@ impl From<String> for JavaVersion {
 
 #[cfg(test)]
 mod test {
-    use crate::{errors::HierResult, jni_env, version::JavaVersion, HierExt};
+    use crate::{classpool::ClassPool, errors::HierResult, version::JavaVersion, HierExt};
 
     #[test]
     #[cfg_attr(
@@ -139,8 +139,8 @@ mod test {
             unreachable!()
         };
 
-        let mut env = jni_env()?;
-        let version = env.get_java_version()?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let version = cp.get_java_version()?;
 
         assert_eq!(current_jvm_version, version);
 

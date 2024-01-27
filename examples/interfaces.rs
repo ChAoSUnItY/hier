@@ -1,13 +1,12 @@
-use hier::jni_env;
-use hier::HierExt;
+use hier::classpool::ClassPool;
 
 fn main() {
-    let mut env = jni_env().unwrap();
-    let mut integer_class = env.lookup_class("java.lang.Integer").unwrap();
-    let mut interfaces = integer_class.interfaces(&mut env).unwrap();
+    let mut cp = ClassPool::from_permanent_env().unwrap();
+    let mut integer_class = cp.lookup_class("java.lang.Integer").unwrap();
+    let mut interfaces = integer_class.interfaces(&mut cp).unwrap();
     let interface_names = interfaces
         .iter_mut()
-        .map(|interface_class| interface_class.name(&mut env))
+        .map(|interface_class| interface_class.name(&mut cp))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
