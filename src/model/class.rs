@@ -7,10 +7,10 @@ use jni::signature::{Primitive, ReturnType};
 use jni::JNIEnv;
 use once_cell::sync::OnceCell;
 
-use crate::errors::{HierError, HierResult as Result};
+use crate::errors::HierResult as Result;
 use crate::modifiers::Modifiers;
 
-use crate::{fetch_class, fetch_class_from_jclass};
+use crate::fetch_class_from_jclass;
 
 /// A rust side pseudo class that projects java side `java.lang.Class`, used for simplify
 /// class property lookup and other class-related operations.
@@ -158,25 +158,6 @@ impl Class {
         let mut class = self.lock()?;
         class.is_synthetic(env)
     }
-
-    /// Returns the 2 class' most common superclass.
-    ///
-    /// If 1 of the classes is interface, then returns `JClass("java.lang.Object")`.
-    ///
-    /// # Example
-    ///
-    /// ```rs
-    /// ```
-    #[deprecated = "Not part of java.lang.Class, this will be moved to example to demonstrate some internal interactions"]
-    pub fn common_superclass<'local>(
-        &mut self,
-        env: &mut JNIEnv<'local>,
-        other: &mut Self,
-    ) -> Result<Class> {
-        let mut class = self.lock()?;
-        let mut other = other.lock()?;
-        class.common_superclass(env, &mut other).map(Class::new)
-    }
 }
 
 impl Deref for Class {
@@ -195,10 +176,6 @@ impl Display for Class {
 
 /// A pseudo java class that projects `java.lang.Class`.
 pub struct ClassInternal {
-    /// A self weak reference that referenced to the [Arc] holding this
-    /// [Class] instance in [class_cache]. This is guaranteed to be always
-    /// upgradable unless [class_cache] is freed.
-    self_cached_weak_ref: OnceCell<Weak<Mutex<Self>>>,
     inner: GlobalRef,
     superclass: OnceCell<Option<Weak<Mutex<Self>>>>,
     interfaces: OnceCell<Vec<Arc<Mutex<Self>>>>,
@@ -214,21 +191,12 @@ impl ClassInternal {
     /// [JClass] as internal backend.
     pub(crate) fn new(class_obj: GlobalRef) -> Self {
         Self {
-            self_cached_weak_ref: OnceCell::new(),
             superclass: OnceCell::new(),
             inner: class_obj,
             class_name: OnceCell::new(),
             modifiers: OnceCell::new(),
             interfaces: OnceCell::new(),
         }
-    }
-
-    /// Initialize self [Weak] reference to the own entry in [class_cache].
-    /// This should be done internally and once.
-    pub(crate) unsafe fn initialize_self_weak_ref(&mut self, weak_ref: Weak<Mutex<Self>>) {
-        self.self_cached_weak_ref
-            .set(weak_ref)
-            .expect("self_cached_weak_ref should not be initialized yet");
     }
 
     fn superclass<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<Option<Arc<Mutex<Self>>>> {
@@ -346,54 +314,6 @@ impl ClassInternal {
     fn is_synthetic<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
         self.modifiers(env).map(Modifiers::is_synthetic_bits)
     }
-
-    #[deprecated = "Not part of java.lang.Class, this will be moved to example to demonstrate some internal interactions"]
-    fn common_superclass<'local>(
-        &mut self,
-        env: &mut JNIEnv<'local>,
-        other: &mut Self,
-    ) -> Result<Arc<Mutex<Self>>> {
-        let mut cls1 = self
-            .self_cached_weak_ref
-            .get()
-            .and_then(Weak::upgrade)
-            .ok_or(HierError::DanglingClassError(format!("{:#}", self)))?;
-        let cls2 = other
-            .self_cached_weak_ref
-            .get()
-            .and_then(Weak::upgrade)
-            .ok_or(HierError::DanglingClassError(format!("{:#}", other)))?;
-
-        if other.is_assignable_from(env, self)? {
-            return Ok(cls1);
-        }
-
-        if self.is_assignable_from(env, other)? {
-            return Ok(cls2);
-        }
-
-        cls1 = match self.superclass(env)? {
-            Some(cls) => cls,
-            None => return fetch_class(env, Self::OBJECT_JNI_CP),
-        };
-
-        loop {
-            let mut cls1_guard = cls1.lock()?;
-
-            if !other.is_assignable_from(env, &cls1_guard)? {
-                drop(cls1_guard);
-                return Ok(cls1);
-            }
-
-            match cls1_guard.superclass(env)? {
-                Some(cls) => {
-                    drop(cls1_guard);
-                    cls1 = cls;
-                }
-                None => return fetch_class(env, Self::OBJECT_JNI_CP),
-            };
-        }
-    }
 }
 
 impl Display for ClassInternal {
@@ -412,7 +332,7 @@ mod test {
     use rstest::rstest;
     use serial_test::serial;
 
-    use crate::{class_cache, errors::HierResult, jni_env, HierExt};
+    use crate::{class::Class, class_cache, errors::HierResult, jni_env, HierExt};
 
     fn free_lookup<'local>(env: &mut JNIEnv<'local>) -> HierResult<()> {
         unsafe { env.free_lookup() }
@@ -516,15 +436,52 @@ mod test {
         free_lookup(&mut env)
     }
 
-    #[test]
+    #[rstest]
+    #[case("java.lang.Integer", "java.lang.Float", "java.lang.Number")]
+    #[case("java.util.EnumMap", "java.util.HashMap", "java.util.AbstractMap")]
     #[serial]
-    fn test_number_common_super_class() -> HierResult<()> {
-        let mut env = jni_env()?;
-        let mut class1 = env.lookup_class("java.lang.Integer")?;
-        let mut class2 = env.lookup_class("java.lang.Float")?;
-        let mut common_superclass = class1.common_superclass(&mut env, &mut class2)?;
+    fn test_common_superclass(
+        #[case] class1: &'static str,
+        #[case] class2: &'static str,
+        #[case] common_superclass_name: &'static str,
+    ) -> HierResult<()> {
+        fn find_most_common_superclass(
+            env: &mut JNIEnv,
+            class1: &mut Class,
+            class2: &mut Class,
+        ) -> HierResult<Class> {
+            if class2.is_assignable_from(env, class1)? {
+                return Ok(class1.clone());
+            }
 
-        assert_eq!(common_superclass.name(&mut env)?, "java.lang.Number");
+            if class1.is_assignable_from(env, class2)? {
+                return Ok(class2.clone());
+            }
+
+            if class1.is_interface(env)? || class2.is_interface(env)? {
+                return env.lookup_class("java.lang.Object");
+            }
+
+            let mut cls1 = class1.clone();
+            while {
+                cls1 = match cls1.superclass(env)? {
+                    Some(superclass) => superclass,
+                    None => return Ok(cls1),
+                };
+
+                !cls1.is_assignable_from(env, class2)?
+            } {}
+
+            Ok(cls1)
+        }
+
+        let mut env = jni_env()?;
+        let mut class1 = env.lookup_class(class1)?;
+        let mut class2 = env.lookup_class(class2)?;
+        let mut common_superclass =
+            find_most_common_superclass(&mut env, &mut class1, &mut class2)?;
+
+        assert_eq!(common_superclass.name(&mut env)?, common_superclass_name);
 
         free_lookup(&mut env)
     }

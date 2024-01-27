@@ -19,7 +19,7 @@ use once_cell::sync::OnceCell;
 use version::JavaVersion;
 
 pub mod classpath;
-mod errors;
+pub mod errors;
 #[cfg(feature = "graph")]
 pub mod graph;
 pub mod version;
@@ -120,11 +120,6 @@ fn fetch_class_from_jclass_internal<'local, 'other_local, 'str>(
     let mut cache = class_cache().lock()?;
     let glob_ref = env.new_global_ref(jclass)?;
     let class = Arc::new(Mutex::new(ClassInternal::new(glob_ref)));
-    let weak_class_self_ref = Arc::downgrade(&class);
-    unsafe {
-        let mut class_guard = class.lock()?;
-        class_guard.initialize_self_weak_ref(weak_class_self_ref);
-    }
 
     Ok(cache
         .entry(known_jclass_cp.to_string())
