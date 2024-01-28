@@ -1,18 +1,14 @@
 #![doc = include_str!("../README.md")]
 
-use std::{
-    collections::HashMap,
-    ops::Deref,
-    sync::{Arc, Mutex, OnceLock},
-};
+use std::ops::Deref;
 
-use class::{Class, ClassInternal};
-use classpath::{ClassPath, DESC_TO_WRAPPER_CLASS_CP, PRIMITIVE_TYPES_TO_DESC};
+use class::ClassInternal;
+
 use errors::HierResult as Result;
 use jni::{
     descriptors::Desc,
     objects::{JClass, JValueGen},
-    signature::{JavaType, ReturnType},
+    signature::{ReturnType},
     JNIEnv,
 };
 use version::JavaVersion;

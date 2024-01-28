@@ -33,7 +33,7 @@ impl From<String> for JavaVersion {
     /// This conversion is compatible for "java.version" and "java.specification.version"
     /// poperties.
     fn from(value: String) -> Self {
-        let version_parts = value.split(".").collect::<Vec<_>>();
+        let version_parts = value.split('.').collect::<Vec<_>>();
 
         if version_parts[0] == "1" {
             // Versions before Java 9

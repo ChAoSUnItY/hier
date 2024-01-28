@@ -28,10 +28,16 @@ pub struct ClassPool<'local> {
 }
 
 impl<'local> ClassPool<'local> {
+    /// Constructs a new [`ClassPool`] by invoking a new [`JavaVM`](jni::JavaVM) and
+    /// attaches its [`JNIEnv`] from permanently.
+    /// 
+    /// When you are interacting with JNI manually (e.g. calling from Java side),
+    /// consider use [`from_exist_env`](Self::from_exist_env).
     pub fn from_permanent_env() -> Result<Self> {
         jni_env().map(|env| Self::from_exist_env(&env))
     }
 
+    /// Constructs a new [`ClassPool`] by cloning existed [`JNIEnv`].
     pub fn from_exist_env(jni_env: &JNIEnv<'local>) -> Self {
         Self {
             jni_env: unsafe { jni_env.unsafe_clone() },
@@ -39,10 +45,18 @@ impl<'local> ClassPool<'local> {
         }
     }
 
-    pub fn get_env(&mut self) -> &mut JNIEnv<'local> {
-        &mut self.jni_env
-    }
-
+    /// Lookups a class, either from [`ClassPool`]'s internal class cache if exists, or
+    /// find given class from JNI and caches.
+    /// 
+    /// # Class path syntax
+    /// 
+    /// [`lookup_class`](Self::lookup_class) uses `java.lang.Class#forName`'s class path
+    /// syntax, e.g. `java.lang.Object`, instead of JNI's class path `java/lang/Object`.
+    /// 
+    /// # Exceptions
+    /// 
+    /// If lookups a single or multiple dimension `void` type array, JVM will throws an 
+    /// exception and this function will return an [`Err`].
     pub fn lookup_class<CP>(&mut self, class_path: CP) -> Result<Class>
     where
         CP: Into<ClassPath>,
@@ -52,30 +66,34 @@ impl<'local> ClassPool<'local> {
         self.fetch_class(&class_path).map(Class::new)
     }
 
+    /// Gets the internal class cache's size.
     pub fn len(&self) -> usize {
         self.class_cache.len()
+    }
+
+    /// Determines if the internal class cache is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Fetch an [GlobalRef] (JClass) either from cache if already fetched before, or directly
     /// from JNI interface if not. After each successful fetching operation, [GlobalRef] (JClass)
     /// instance will exist until the termination of program, if this is not desired,
     /// use [free_jclass_cache] to free cache.
-    fn fetch_class(&mut self, class_path: &str) -> Result<Arc<Mutex<ClassInternal>>> {
+    pub(crate) fn fetch_class(&mut self, class_path: &str) -> Result<Arc<Mutex<ClassInternal>>> {
         if let Some(cached_class) = self.class_cache.get(class_path) {
             Ok(cached_class.clone())
+        } else if PRIMITIVE_TYPES_TO_DESC.contains_key(class_path) {
+            self.fetch_primitive_class(class_path)
         } else {
-            if PRIMITIVE_TYPES_TO_DESC.contains_key(class_path) {
-                self.fetch_primitive_class(class_path)
-            } else {
-                let jclass = self.jni_env.find_class(class_path)?;
-                self.fetch_class_from_jclass(&jclass, Some(class_path))
-            }
+            let jclass = self.jni_env.find_class(class_path)?;
+            self.fetch_class_from_jclass(&jclass, Some(class_path))
         }
     }
 
-    pub(crate) fn fetch_class_from_jclass<'other_local>(
+    pub(crate) fn fetch_class_from_jclass(
         &mut self,
-        jclass: &JClass<'other_local>,
+        jclass: &JClass<'_>,
         known_jclass_cp: Option<&str>,
     ) -> Result<Arc<Mutex<ClassInternal>>> {
         match known_jclass_cp {
@@ -104,9 +122,9 @@ impl<'local> ClassPool<'local> {
         }
     }
 
-    fn fetch_class_from_jclass_internal<'other_local>(
+    fn fetch_class_from_jclass_internal(
         &mut self,
-        jclass: &JClass<'other_local>,
+        jclass: &JClass<'_>,
         known_jclass_cp: &str,
     ) -> Result<Arc<Mutex<ClassInternal>>> {
         let glob_ref = self.jni_env.new_global_ref(jclass)?;

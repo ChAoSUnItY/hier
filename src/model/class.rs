@@ -45,7 +45,7 @@ impl Class {
     ///
     /// assert_eq!(superclass_name, "java.lang.Number");
     /// ```
-    pub fn superclass<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<Option<Self>> {
+    pub fn superclass(&mut self, cp: &mut ClassPool<'_>) -> Result<Option<Self>> {
         let mut class = self.lock()?;
         class
             .superclass(cp)
@@ -56,7 +56,7 @@ impl Class {
     ///
     /// This function is equivalent to `java.lang.Class#getName`.
     // TODO: Distinct other naming fetching functions
-    pub fn name<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<String> {
+    pub fn name(&mut self, cp: &mut ClassPool<'_>) -> Result<String> {
         let mut class = self.lock()?;
         class.name(cp)
     }
@@ -73,7 +73,7 @@ impl Class {
     ///
     /// assert_eq!(modifiers, Modifiers::Public & Modifiers::Final)
     /// ```
-    pub fn modifiers<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<u16> {
+    pub fn modifiers(&mut self, cp: &mut ClassPool<'_>) -> Result<u16> {
         let mut class = self.lock()?;
         class.modifiers(cp)
     }
@@ -105,7 +105,7 @@ impl Class {
     ///
     /// println!("{interface_names:#}");
     /// ```
-    pub fn interfaces<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<Vec<Self>> {
+    pub fn interfaces(&mut self, cp: &mut ClassPool<'_>) -> Result<Vec<Self>> {
         let mut class = self.lock()?;
         class
             .interfaces(cp)
@@ -129,9 +129,9 @@ impl Class {
     ///
     /// assert_eq!(is_assignable, true);
     /// ```
-    pub fn is_assignable_from<'local>(
+    pub fn is_assignable_from(
         &mut self,
-        cp: &mut ClassPool<'local>,
+        cp: &mut ClassPool<'_>,
         other: &Self,
     ) -> Result<bool> {
         let mut class = self.lock()?;
@@ -140,19 +140,19 @@ impl Class {
     }
 
     /// Determines if the class is an interface.
-    pub fn is_interface<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<bool> {
+    pub fn is_interface(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         let mut class = self.lock()?;
         class.is_interface(cp)
     }
 
     /// Determines if the class is an annotation interface.
-    pub fn is_annotation<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<bool> {
+    pub fn is_annotation(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         let mut class = self.lock()?;
         class.is_annotation(cp)
     }
 
     /// Determines if the class has synthetic modifier bit set.
-    pub fn is_synthetic<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<bool> {
+    pub fn is_synthetic(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         let mut class = self.lock()?;
         class.is_synthetic(cp)
     }
@@ -197,9 +197,9 @@ impl ClassInternal {
         }
     }
 
-    fn superclass<'local>(
+    fn superclass(
         &mut self,
-        cp: &mut ClassPool<'local>,
+        cp: &mut ClassPool<'_>,
     ) -> Result<Option<Arc<Mutex<Self>>>> {
         self.superclass
             .get_or_try_init(|| {
@@ -214,7 +214,7 @@ impl ClassInternal {
             .map(|opt_superclass| opt_superclass.and_then(Weak::upgrade))
     }
 
-    fn name<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<String> {
+    fn name(&mut self, cp: &mut ClassPool<'_>) -> Result<String> {
         self.class_name
             .get_or_try_init(|| {
                 cp.push_local_frame(1)?;
@@ -242,7 +242,7 @@ impl ClassInternal {
             .map_err(Into::into)
     }
 
-    fn modifiers<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<u16> {
+    fn modifiers(&mut self, cp: &mut ClassPool<'_>) -> Result<u16> {
         self.modifiers
             .get_or_try_init(|| {
                 let method_id = cp.get_method_id(Self::CLASS_JNI_CP, "getModifiers", "()I")?;
@@ -262,7 +262,7 @@ impl ClassInternal {
             .map_err(Into::into)
     }
 
-    fn interfaces<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<&Vec<Arc<Mutex<Self>>>> {
+    fn interfaces(&mut self, cp: &mut ClassPool<'_>) -> Result<&Vec<Arc<Mutex<Self>>>> {
         self.interfaces.get_or_try_init(|| {
             cp.push_local_frame(1)?;
             let method_id =
@@ -290,9 +290,9 @@ impl ClassInternal {
         })
     }
 
-    fn is_assignable_from<'local>(
+    fn is_assignable_from(
         &mut self,
-        cp: &mut ClassPool<'local>,
+        cp: &mut ClassPool<'_>,
         other: &Self,
     ) -> Result<bool> {
         // FIXME: Should we explore the both classes class hierarchy and so the
@@ -315,15 +315,15 @@ impl ClassInternal {
         }
     }
 
-    fn is_interface<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<bool> {
+    fn is_interface(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         self.modifiers(cp).map(Modifiers::is_interface_bits)
     }
 
-    fn is_annotation<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<bool> {
+    fn is_annotation(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         self.modifiers(cp).map(Modifiers::is_annotation_bits)
     }
 
-    fn is_synthetic<'local>(&mut self, cp: &mut ClassPool<'local>) -> Result<bool> {
+    fn is_synthetic(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         self.modifiers(cp).map(Modifiers::is_synthetic_bits)
     }
 }
