@@ -27,12 +27,12 @@ pub struct ClassPool<'local> {
 }
 
 impl<'local> ClassPool<'local> {
+    #[cfg(feature = "invocation")]
     /// Constructs a new [`ClassPool`] by invoking a new [`JavaVM`](jni::JavaVM) and
     /// attaches its [`JNIEnv`] from permanently.
     ///
     /// When you are interacting with JNI manually (e.g. calling from Java side),
     /// consider use [`from_exist_env`](Self::from_exist_env).
-    #[cfg(feature = "invocation")]
     pub fn from_permanent_env() -> Result<Self> {
         use crate::java_vm::jni_env;
 
