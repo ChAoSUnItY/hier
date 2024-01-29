@@ -1,3 +1,4 @@
+#![allow(clippy::bad_bit_mask)]
 use std::fmt::{self, Debug, Display};
 
 use bitflags::bitflags;

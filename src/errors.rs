@@ -1,6 +1,6 @@
 use std::sync::PoisonError;
 
-use jni::errors::{JniError, StartJvmError};
+use jni::errors::JniError;
 use thiserror::Error;
 
 pub type HierResult<T> = Result<T, HierError>;
@@ -10,11 +10,13 @@ pub enum HierError {
     #[error(transparent)]
     JavaError(#[from] jni::errors::Error),
     #[error(transparent)]
+    #[cfg(feature = "invocation")]
     JvmError(#[from] jni::JvmError),
     #[error(transparent)]
-    JniError(#[from] JniError),
+    #[cfg(feature = "invocation")]
+    StartJvmError(#[from] jni::errors::StartJvmError),
     #[error(transparent)]
-    StartJvmError(#[from] StartJvmError),
+    JniError(#[from] JniError),
     #[error("unable to access to class cache, reason: {0}")]
     CacheAccessError(&'static str),
     #[error("unable to find the class {0} in the cache, Class probably had been freed up")]

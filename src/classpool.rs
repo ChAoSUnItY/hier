@@ -11,7 +11,6 @@ use jni::{
 };
 
 use crate::{
-    bridge::jni_env,
     class::{Class, ClassInternal},
     classpath::ClassPath,
 };
@@ -30,10 +29,13 @@ pub struct ClassPool<'local> {
 impl<'local> ClassPool<'local> {
     /// Constructs a new [`ClassPool`] by invoking a new [`JavaVM`](jni::JavaVM) and
     /// attaches its [`JNIEnv`] from permanently.
-    /// 
+    ///
     /// When you are interacting with JNI manually (e.g. calling from Java side),
     /// consider use [`from_exist_env`](Self::from_exist_env).
+    #[cfg(feature = "invocation")]
     pub fn from_permanent_env() -> Result<Self> {
+        use crate::java_vm::jni_env;
+
         jni_env().map(|env| Self::from_exist_env(&env))
     }
 
@@ -47,15 +49,15 @@ impl<'local> ClassPool<'local> {
 
     /// Lookups a class, either from [`ClassPool`]'s internal class cache if exists, or
     /// find given class from JNI and caches.
-    /// 
+    ///
     /// # Class path syntax
-    /// 
+    ///
     /// [`lookup_class`](Self::lookup_class) uses `java.lang.Class#forName`'s class path
     /// syntax, e.g. `java.lang.Object`, instead of JNI's class path `java/lang/Object`.
-    /// 
+    ///
     /// # Exceptions
-    /// 
-    /// If lookups a single or multiple dimension `void` type array, JVM will throws an 
+    ///
+    /// If lookups a single or multiple dimension `void` type array, JVM will throws an
     /// exception and this function will return an [`Err`].
     pub fn lookup_class<CP>(&mut self, class_path: CP) -> Result<Class>
     where

@@ -129,11 +129,7 @@ impl Class {
     ///
     /// assert_eq!(is_assignable, true);
     /// ```
-    pub fn is_assignable_from(
-        &mut self,
-        cp: &mut ClassPool<'_>,
-        other: &Self,
-    ) -> Result<bool> {
+    pub fn is_assignable_from(&mut self, cp: &mut ClassPool<'_>, other: &Self) -> Result<bool> {
         let mut class = self.lock()?;
         let other = other.lock()?;
         class.is_assignable_from(cp, &other)
@@ -197,10 +193,7 @@ impl ClassInternal {
         }
     }
 
-    fn superclass(
-        &mut self,
-        cp: &mut ClassPool<'_>,
-    ) -> Result<Option<Arc<Mutex<Self>>>> {
+    fn superclass(&mut self, cp: &mut ClassPool<'_>) -> Result<Option<Arc<Mutex<Self>>>> {
         self.superclass
             .get_or_try_init(|| {
                 let Some(superclass) = cp.get_superclass(&self.inner)? else {
@@ -290,11 +283,7 @@ impl ClassInternal {
         })
     }
 
-    fn is_assignable_from(
-        &mut self,
-        cp: &mut ClassPool<'_>,
-        other: &Self,
-    ) -> Result<bool> {
+    fn is_assignable_from(&mut self, cp: &mut ClassPool<'_>, other: &Self) -> Result<bool> {
         // FIXME: Should we explore the both classes class hierarchy and so the
         // whole hierarchy tree can be cached and used later for better performance?
         let method_id = cp.get_method_id(
@@ -338,7 +327,7 @@ impl Display for ClassInternal {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "invocation"))]
 mod test {
     use rstest::rstest;
     use serial_test::serial;

@@ -8,17 +8,18 @@ use errors::HierResult as Result;
 use jni::{
     descriptors::Desc,
     objects::{JClass, JValueGen},
-    signature::{ReturnType},
+    signature::ReturnType,
     JNIEnv,
 };
 use version::JavaVersion;
 
-mod bridge;
 pub mod classpath;
 pub mod classpool;
 pub mod errors;
 #[cfg(feature = "graph")]
 pub mod graph;
+#[cfg(feature = "invocation")]
+mod java_vm;
 pub mod version;
 
 mod model {

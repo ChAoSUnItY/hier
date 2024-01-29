@@ -72,7 +72,7 @@ impl From<String> for JavaVersion {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "invocation"))]
 mod test {
     use crate::{classpool::ClassPool, errors::HierResult, version::JavaVersion, HierExt};
 
