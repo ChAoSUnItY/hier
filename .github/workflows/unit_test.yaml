@@ -27,12 +27,12 @@ jobs:
       with:
         rustflags: "--cfg jvm_v${{ matrix.java_version }}"
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --features invocation
   test-all-versions:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        java_version: ['8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21'] # Versions below 8 are not available
+        java_version: ['9', '10', '12', '13', '14', '15', '16', '18', '19', '20'] # Versions below 8 are not available
       fail-fast: true
     runs-on: ${{ matrix.os }}
     steps:
@@ -45,4 +45,4 @@ jobs:
       with:
         rustflags: "--cfg jvm_v${{ matrix.java_version }}"
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --features invocation
