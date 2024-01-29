@@ -330,12 +330,10 @@ impl Display for ClassInternal {
 #[cfg(all(test, feature = "invocation"))]
 mod test {
     use rstest::rstest;
-    use serial_test::serial;
 
     use crate::{class::Class, classpool::ClassPool, errors::HierResult};
 
     #[test]
-    #[serial]
     fn test_lookup_caching() -> HierResult<()> {
         let mut cp = ClassPool::from_permanent_env()?;
         let _class1 = cp.lookup_class("java.lang.Object")?;
@@ -346,7 +344,6 @@ mod test {
     }
 
     #[test]
-    #[serial]
     fn test_superclass() -> HierResult<()> {
         let mut cp = ClassPool::from_permanent_env()?;
         let mut class = cp.lookup_class("java.lang.Integer")?;
@@ -368,7 +365,6 @@ mod test {
     #[case("java.lang.Class", "java.lang.Class")]
     #[case("java.lang.Class[]", "[Ljava.lang.Class;")]
     #[case("java.util.Map$Entry", "java.util.Map$Entry")]
-    #[serial]
     fn test_class_name(
         #[case] input: &'static str,
         #[case] get_name_result: &'static str,
@@ -381,7 +377,6 @@ mod test {
     }
 
     #[test]
-    #[serial]
     fn test_unsupported_class_name() -> HierResult<()> {
         let mut cp = ClassPool::from_permanent_env()?;
 
@@ -391,7 +386,6 @@ mod test {
     }
 
     #[test]
-    #[serial]
     fn test_is_assignable_from() -> HierResult<()> {
         let mut cp = ClassPool::from_permanent_env()?;
         let mut class1 = cp.lookup_class("java.lang.Integer")?;
@@ -407,7 +401,6 @@ mod test {
     }
 
     #[test]
-    #[serial]
     fn test_is_interface() -> HierResult<()> {
         let mut cp = ClassPool::from_permanent_env()?;
         let mut interface = cp.lookup_class("java.lang.Comparable")?;
@@ -418,7 +411,6 @@ mod test {
     }
 
     #[test]
-    #[serial]
     fn test_is_annotation() -> HierResult<()> {
         let mut env = ClassPool::from_permanent_env()?;
         let mut annotation = env.lookup_class("java.lang.Override")?;
@@ -431,7 +423,6 @@ mod test {
     #[rstest]
     #[case("java.lang.Integer", "java.lang.Float", "java.lang.Number")]
     #[case("java.util.EnumMap", "java.util.HashMap", "java.util.AbstractMap")]
-    #[serial]
     fn test_common_superclass(
         #[case] class1: &'static str,
         #[case] class2: &'static str,
@@ -478,7 +469,6 @@ mod test {
     }
 
     #[test]
-    #[serial]
     #[cfg_attr(
         not(any(jvm_v8, jvm_v11, jvm_v17, jvm_v21)),
         ignore = "No Java LTS version provided"
