@@ -1,5 +1,8 @@
 # Hier
 
+![crates.io](https://img.shields.io/crates/v/hier.svg)
+[![Docs badge]][docs.rs]
+
 Hier is a library supports JVM class hierarchy lookup by extending
 JNI interface.
 
@@ -84,3 +87,6 @@ fn main() {
 
 ## License
 Hier is licensed under MIT License.
+
+[Docs badge]: https://img.shields.io/badge/docs.rs-rustdoc-green
+[docs.rs]: https://docs.rs/hier/
