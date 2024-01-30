@@ -11,48 +11,76 @@ e.g. `JAVA_HOME`).
 
 ## Usage
 
+To use without calling from an exist Java application, you'll need 
+to enable `invocation` feature, then use `ClassPool::from_permanent_env`
+to construct a `ClassPool`.
+
 ### Get common super class of 2 classes
 
 ```rs
-use hier::jni_env;
-use hier::HierExt;
+use hier::class::Class;
+use hier::classpool::ClassPool;
+use hier::errors::HierError;
 
 fn main() {
-    let mut env = jni_env().unwrap();
-    let mut integer_class = env.lookup_class("java.lang.Integer").unwrap();
-    let mut float_class = env.lookup_class("java.lang.Float").unwrap();
-    let mut common_superclass = integer_class.common_superclass(&mut env, &mut float_class).unwrap();
-    let cs_class_name = common_superclass.class_name(&mut env).unwrap();
+    let mut cp = ClassPool::from_permanent_env().unwrap();
+    let mut integer_class = cp.lookup_class("java.lang.Integer").unwrap();
+    let mut float_class = cp.lookup_class("java.lang.Float").unwrap();
+    let mut most_common_superclass =
+        find_most_common_superclass(&mut cp, &mut integer_class, &mut float_class).unwrap();
 
-    println!("{cs_class_name}");
+    println!("{}", most_common_superclass.name(&mut cp).unwrap());
+}
+
+fn find_most_common_superclass(
+    cp: &mut ClassPool,
+    class1: &mut Class,
+    class2: &mut Class,
+) -> Result<Class, HierError> {
+    if class2.is_assignable_from(cp, class1)? {
+        return Ok(class1.clone());
+    }
+
+    if class1.is_assignable_from(cp, class2)? {
+        return Ok(class2.clone());
+    }
+
+    if class1.is_interface(cp)? || class2.is_interface(cp)? {
+        return cp.lookup_class("java.lang.Object");
+    }
+
+    let mut cls1 = class1.clone();
+    while {
+        cls1 = match cls1.superclass(cp)? {
+            Some(superclass) => superclass,
+            None => return Ok(cls1),
+        };
+
+        !cls1.is_assignable_from(cp, class2)?
+    } {}
+
+    Ok(cls1)
 }
 ```
 
 ### Get derived interface of class
 
 ```rs
-use hier::jni_env;
-use hier::HierExt;
+use hier::classpool::ClassPool;
 
 fn main() {
-    let mut env = jni_env().unwrap();
-    let mut integer_class = env.lookup_class("java.lang.Integer").unwrap();
-    let mut interfaces = integer_class.interfaces(&mut env).unwrap();
-    let interface_names = interfaces.iter_mut()
-        .map(|interface_class| interface_class.class_name(&mut env))
+    let mut cp = ClassPool::from_permanent_env().unwrap();
+    let mut integer_class = cp.lookup_class("java.lang.Integer").unwrap();
+    let mut interfaces = integer_class.interfaces(&mut cp).unwrap();
+    let interface_names = interfaces
+        .iter_mut()
+        .map(|interface_class| interface_class.name(&mut cp))
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
     println!("{interface_names:#?}");
 }
 ```
-
-## Performance
-
-Finding class through JNI costs huge amount of a performance. Hier caches all found classes, 
-to use cached classes, use `HierExt::lookup_class`. To release the cache, use `HierExt::free_lookup`.
-
-Additionally, `HierExt::common_superclass` always uses cached class to find.
 
 ## License
 Hier is licensed under MIT License.
