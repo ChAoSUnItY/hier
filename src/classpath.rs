@@ -33,11 +33,11 @@ impl ClassPath {
     pub fn convert(&self) -> Self {
         match self {
             Self::Java(cp) => {
-                let mut jni_cp = cp.replace(".", "/").replace("[]", "");
+                let mut jni_cp = cp.replace('.', "/").replace("[]", "");
                 let array_dim = cp.matches("[]").count();
 
                 if array_dim > 0 {
-                    jni_cp = if let Some(desc) = PRIMITIVE_TYPES_TO_DESC.get(&jni_cp.as_str()) {
+                    jni_cp = if let Some(desc) = PRIMITIVE_TYPES_TO_DESC.get(jni_cp.as_str()) {
                         format!("{}{desc}", "[".repeat(array_dim))
                     } else {
                         format!("{}L{jni_cp};", "[".repeat(array_dim))
@@ -47,8 +47,8 @@ impl ClassPath {
                 Self::JNI(jni_cp)
             }
             Self::JNI(cp) => {
-                let mut java_cp = cp.replace("/", ".").replace("[", "");
-                let array_dim = cp.matches("[").count();
+                let mut java_cp = cp.replace('/', ".").replace('[', "");
+                let array_dim = cp.matches('[').count();
 
                 if array_dim > 0 {
                     if !PRIMITIVE_TYPES_TO_DESC
@@ -81,9 +81,9 @@ impl ClassPath {
     }
 }
 
-impl Into<String> for ClassPath {
-    fn into(self) -> String {
-        match self {
+impl From<ClassPath> for String {
+    fn from(val: ClassPath) -> Self {
+        match val {
             ClassPath::Java(cp) => cp,
             ClassPath::JNI(cp) => cp,
         }

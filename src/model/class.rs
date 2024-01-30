@@ -2,15 +2,13 @@ use std::fmt::{Display, Pointer};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, Weak};
 
-use jni::objects::{GlobalRef, JObjectArray, JValue, JValueGen, JValueOwned};
+use jni::objects::{GlobalRef, JObject, JObjectArray, JString, JValue, JValueGen, JValueOwned};
 use jni::signature::{Primitive, ReturnType};
-use jni::JNIEnv;
 use once_cell::sync::OnceCell;
 
+use crate::classpool::ClassPool;
 use crate::errors::HierResult as Result;
 use crate::modifiers::Modifiers;
-
-use crate::fetch_class_from_jclass;
 
 /// A rust side pseudo class that projects java side `java.lang.Class`, used for simplify
 /// class property lookup and other class-related operations.
@@ -47,10 +45,10 @@ impl Class {
     ///
     /// assert_eq!(superclass_name, "java.lang.Number");
     /// ```
-    pub fn superclass<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<Option<Self>> {
+    pub fn superclass(&mut self, cp: &mut ClassPool<'_>) -> Result<Option<Self>> {
         let mut class = self.lock()?;
         class
-            .superclass(env)
+            .superclass(cp)
             .map(|opt_superclass| opt_superclass.map(Self::new))
     }
 
@@ -58,9 +56,9 @@ impl Class {
     ///
     /// This function is equivalent to `java.lang.Class#getName`.
     // TODO: Distinct other naming fetching functions
-    pub fn name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
+    pub fn name(&mut self, cp: &mut ClassPool<'_>) -> Result<String> {
         let mut class = self.lock()?;
-        class.name(env)
+        class.name(cp)
     }
 
     /// Returns class' access flags. See [Modifiers] for all possible modifiers that would
@@ -75,9 +73,9 @@ impl Class {
     ///
     /// assert_eq!(modifiers, Modifiers::Public & Modifiers::Final)
     /// ```
-    pub fn modifiers<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<u16> {
+    pub fn modifiers(&mut self, cp: &mut ClassPool<'_>) -> Result<u16> {
         let mut class = self.lock()?;
-        class.modifiers(env)
+        class.modifiers(cp)
     }
 
     /// Returns array of interface [Class] that represents the interfaces implemented by
@@ -107,10 +105,10 @@ impl Class {
     ///
     /// println!("{interface_names:#}");
     /// ```
-    pub fn interfaces<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<Vec<Self>> {
+    pub fn interfaces(&mut self, cp: &mut ClassPool<'_>) -> Result<Vec<Self>> {
         let mut class = self.lock()?;
         class
-            .interfaces(env)
+            .interfaces(cp)
             .map(|interfaces| interfaces.iter().map(Arc::clone).map(Class::new).collect())
     }
 
@@ -131,32 +129,28 @@ impl Class {
     ///
     /// assert_eq!(is_assignable, true);
     /// ```
-    pub fn is_assignable_from<'local>(
-        &mut self,
-        env: &mut JNIEnv<'local>,
-        other: &Self,
-    ) -> Result<bool> {
+    pub fn is_assignable_from(&mut self, cp: &mut ClassPool<'_>, other: &Self) -> Result<bool> {
         let mut class = self.lock()?;
         let other = other.lock()?;
-        class.is_assignable_from(env, &other)
+        class.is_assignable_from(cp, &other)
     }
 
     /// Determines if the class is an interface.
-    pub fn is_interface<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
+    pub fn is_interface(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         let mut class = self.lock()?;
-        class.is_interface(env)
+        class.is_interface(cp)
     }
 
     /// Determines if the class is an annotation interface.
-    pub fn is_annotation<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
+    pub fn is_annotation(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         let mut class = self.lock()?;
-        class.is_annotation(env)
+        class.is_annotation(cp)
     }
 
     /// Determines if the class has synthetic modifier bit set.
-    pub fn is_synthetic<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
+    pub fn is_synthetic(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
         let mut class = self.lock()?;
-        class.is_synthetic(env)
+        class.is_synthetic(cp)
     }
 }
 
@@ -199,13 +193,13 @@ impl ClassInternal {
         }
     }
 
-    fn superclass<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<Option<Arc<Mutex<Self>>>> {
+    fn superclass(&mut self, cp: &mut ClassPool<'_>) -> Result<Option<Arc<Mutex<Self>>>> {
         self.superclass
             .get_or_try_init(|| {
-                let Some(superclass) = env.get_superclass(&self.inner)? else {
+                let Some(superclass) = cp.get_superclass(&self.inner)? else {
                     return Ok(None);
                 };
-                let cached_superclass = fetch_class_from_jclass(env, &superclass, None)?;
+                let cached_superclass = cp.fetch_class_from_jclass(&superclass, None)?;
 
                 Ok(Some(Arc::downgrade(&cached_superclass)))
             })
@@ -213,33 +207,41 @@ impl ClassInternal {
             .map(|opt_superclass| opt_superclass.and_then(Weak::upgrade))
     }
 
-    fn name<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<String> {
+    fn name(&mut self, cp: &mut ClassPool<'_>) -> Result<String> {
         self.class_name
             .get_or_try_init(|| {
+                cp.push_local_frame(1)?;
+
                 let method_id =
-                    env.get_method_id(Self::CLASS_JNI_CP, "getName", "()Ljava/lang/String;")?;
-                let class_name = unsafe {
-                    env.call_method_unchecked(&self.inner, method_id, ReturnType::Object, &[])
-                        .and_then(JValueGen::l)?
+                    cp.get_method_id(Self::CLASS_JNI_CP, "getName", "()Ljava/lang/String;")?;
+                let class_name: JString = unsafe {
+                    cp.call_method_unchecked(&self.inner, method_id, ReturnType::Object, &[])
+                        .and_then(JValueGen::l)
+                        .map(Into::into)?
                 };
-                let class_name = env.auto_local(class_name);
+
+                let string = unsafe {
+                    cp.get_string_unchecked(&class_name)
+                        .map(Into::<String>::into)
+                };
 
                 unsafe {
-                    env.get_string_unchecked(class_name.deref().into())
-                        .map(Into::<String>::into)
+                    cp.pop_local_frame(&JObject::null())?;
                 }
+
+                string
             })
             .cloned()
             .map_err(Into::into)
     }
 
-    fn modifiers<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<u16> {
+    fn modifiers(&mut self, cp: &mut ClassPool<'_>) -> Result<u16> {
         self.modifiers
             .get_or_try_init(|| {
-                let method_id = env.get_method_id(Self::CLASS_JNI_CP, "getModifiers", "()I")?;
+                let method_id = cp.get_method_id(Self::CLASS_JNI_CP, "getModifiers", "()I")?;
 
                 unsafe {
-                    env.call_method_unchecked(
+                    cp.call_method_unchecked(
                         &self.inner,
                         method_id,
                         ReturnType::Primitive(Primitive::Int),
@@ -253,46 +255,45 @@ impl ClassInternal {
             .map_err(Into::into)
     }
 
-    fn interfaces<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<&Vec<Arc<Mutex<Self>>>> {
+    fn interfaces(&mut self, cp: &mut ClassPool<'_>) -> Result<&Vec<Arc<Mutex<Self>>>> {
         self.interfaces.get_or_try_init(|| {
+            cp.push_local_frame(1)?;
             let method_id =
-                env.get_method_id(Self::CLASS_JNI_CP, "getInterfaces", "()[Ljava/lang/Class;")?;
+                cp.get_method_id(Self::CLASS_JNI_CP, "getInterfaces", "()[Ljava/lang/Class;")?;
             let interface_arr: JObjectArray = unsafe {
-                env.call_method_unchecked(&self.inner, method_id, ReturnType::Array, &[])
+                cp.call_method_unchecked(&self.inner, method_id, ReturnType::Array, &[])
                     .and_then(JValueGen::l)?
                     .into()
             };
-            let interface_arr = env.auto_local(interface_arr);
-            let interfaces_len = env.get_array_length(interface_arr.deref())?;
+            let interfaces_len = cp.get_array_length(&interface_arr)?;
             let mut interfaces = Vec::with_capacity(interfaces_len as usize);
 
             for i in 0..interfaces_len {
-                let interface_class = env
-                    .get_object_array_element(interface_arr.deref(), i)?
-                    .into();
-                let interface_class = fetch_class_from_jclass(env, &interface_class, None)?;
+                let interface_class = cp.get_object_array_element(&interface_arr, i)?.into();
+                let interface_class = cp.fetch_class_from_jclass(&interface_class, None)?;
 
                 interfaces.push(interface_class);
+            }
+
+            unsafe {
+                cp.pop_local_frame(&JObject::null())?;
             }
 
             Ok(interfaces)
         })
     }
 
-    fn is_assignable_from<'local>(
-        &mut self,
-        env: &mut JNIEnv<'local>,
-        other: &Self,
-    ) -> Result<bool> {
+    fn is_assignable_from(&mut self, cp: &mut ClassPool<'_>, other: &Self) -> Result<bool> {
         // FIXME: Should we explore the both classes class hierarchy and so the
         // whole hierarchy tree can be cached and used later for better performance?
-        let method_id = env.get_method_id(
+        let method_id = cp.get_method_id(
             Self::CLASS_JNI_CP,
             "isAssignableFrom",
             "(Ljava/lang/Class;)Z",
         )?;
+
         unsafe {
-            env.call_method_unchecked(
+            cp.call_method_unchecked(
                 &self.inner,
                 method_id,
                 ReturnType::Primitive(Primitive::Boolean),
@@ -303,16 +304,16 @@ impl ClassInternal {
         }
     }
 
-    fn is_interface<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
-        self.modifiers(env).map(Modifiers::is_interface_bits)
+    fn is_interface(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
+        self.modifiers(cp).map(Modifiers::is_interface_bits)
     }
 
-    fn is_annotation<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
-        self.modifiers(env).map(Modifiers::is_annotation_bits)
+    fn is_annotation(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
+        self.modifiers(cp).map(Modifiers::is_annotation_bits)
     }
 
-    fn is_synthetic<'local>(&mut self, env: &mut JNIEnv<'local>) -> Result<bool> {
-        self.modifiers(env).map(Modifiers::is_synthetic_bits)
+    fn is_synthetic(&mut self, cp: &mut ClassPool<'_>) -> Result<bool> {
+        self.modifiers(cp).map(Modifiers::is_synthetic_bits)
     }
 }
 
@@ -326,47 +327,35 @@ impl Display for ClassInternal {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "invocation"))]
 mod test {
-    use jni::JNIEnv;
     use rstest::rstest;
-    use serial_test::serial;
 
-    use crate::{class::Class, class_cache, errors::HierResult, jni_env, HierExt};
-
-    fn free_lookup<'local>(env: &mut JNIEnv<'local>) -> HierResult<()> {
-        unsafe { env.free_lookup() }
-    }
+    use crate::{class::Class, classpool::ClassPool, errors::HierResult};
 
     #[test]
-    #[serial]
     fn test_lookup_caching() -> HierResult<()> {
-        let mut env = jni_env()?;
-        let _class1 = env.lookup_class("java.lang.Object")?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let _class1 = cp.lookup_class("java.lang.Object")?;
 
-        assert_eq!(class_cache().lock()?.len(), 1);
-
-        free_lookup(&mut env)?;
-
-        assert_eq!(class_cache().lock()?.len(), 0);
+        assert_eq!(cp.len(), 1);
 
         Ok(())
     }
 
     #[test]
-    #[serial]
     fn test_superclass() -> HierResult<()> {
-        let mut env = jni_env()?;
-        let mut class = env.lookup_class("java.lang.Integer")?;
-        let superclass = class.superclass(&mut env)?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let mut class = cp.lookup_class("java.lang.Integer")?;
+        let superclass = class.superclass(&mut cp)?;
 
         assert!(superclass.is_some());
 
         let mut superclass = superclass.unwrap();
 
-        assert_eq!(superclass.name(&mut env)?, "java.lang.Number");
+        assert_eq!(superclass.name(&mut cp)?, "java.lang.Number");
 
-        free_lookup(&mut env)
+        Ok(())
     }
 
     #[rstest]
@@ -376,118 +365,110 @@ mod test {
     #[case("java.lang.Class", "java.lang.Class")]
     #[case("java.lang.Class[]", "[Ljava.lang.Class;")]
     #[case("java.util.Map$Entry", "java.util.Map$Entry")]
-    #[serial]
     fn test_class_name(
         #[case] input: &'static str,
         #[case] get_name_result: &'static str,
     ) -> HierResult<()> {
-        let mut env = jni_env()?;
+        let mut cp = ClassPool::from_permanent_env()?;
 
-        assert_eq!(env.lookup_class(input)?.name(&mut env)?, get_name_result);
+        assert_eq!(cp.lookup_class(input)?.name(&mut cp)?, get_name_result);
 
-        free_lookup(&mut env)
+        Ok(())
     }
 
     #[test]
-    #[serial]
     fn test_unsupported_class_name() -> HierResult<()> {
-        let mut env = jni_env()?;
+        let mut cp = ClassPool::from_permanent_env()?;
 
-        assert!(env.lookup_class("void[]").is_err());
+        assert!(cp.lookup_class("void[]").is_err());
 
-        free_lookup(&mut env)
+        Ok(())
     }
 
     #[test]
-    #[serial]
     fn test_is_assignable_from() -> HierResult<()> {
-        let mut env = jni_env()?;
-        let mut class1 = env.lookup_class("java.lang.Integer")?;
-        let superclass = class1.superclass(&mut env)?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let mut class1 = cp.lookup_class("java.lang.Integer")?;
+        let superclass = class1.superclass(&mut cp)?;
 
         assert!(superclass.is_some());
 
         let mut superclass = superclass.unwrap();
 
-        assert!(superclass.is_assignable_from(&mut env, &class1)?);
+        assert!(superclass.is_assignable_from(&mut cp, &class1)?);
 
-        free_lookup(&mut env)
+        Ok(())
     }
 
     #[test]
-    #[serial]
     fn test_is_interface() -> HierResult<()> {
-        let mut env = jni_env()?;
-        let mut interface = env.lookup_class("java.lang.Comparable")?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let mut interface = cp.lookup_class("java.lang.Comparable")?;
 
-        assert!(interface.is_interface(&mut env)?);
+        assert!(interface.is_interface(&mut cp)?);
 
-        free_lookup(&mut env)
+        Ok(())
     }
 
     #[test]
-    #[serial]
     fn test_is_annotation() -> HierResult<()> {
-        let mut env = jni_env()?;
+        let mut env = ClassPool::from_permanent_env()?;
         let mut annotation = env.lookup_class("java.lang.Override")?;
 
         assert!(annotation.is_annotation(&mut env)?);
 
-        free_lookup(&mut env)
+        Ok(())
     }
 
     #[rstest]
     #[case("java.lang.Integer", "java.lang.Float", "java.lang.Number")]
     #[case("java.util.EnumMap", "java.util.HashMap", "java.util.AbstractMap")]
-    #[serial]
     fn test_common_superclass(
         #[case] class1: &'static str,
         #[case] class2: &'static str,
         #[case] common_superclass_name: &'static str,
     ) -> HierResult<()> {
         fn find_most_common_superclass(
-            env: &mut JNIEnv,
+            cp: &mut ClassPool,
             class1: &mut Class,
             class2: &mut Class,
         ) -> HierResult<Class> {
-            if class2.is_assignable_from(env, class1)? {
+            if class2.is_assignable_from(cp, class1)? {
                 return Ok(class1.clone());
             }
 
-            if class1.is_assignable_from(env, class2)? {
+            if class1.is_assignable_from(cp, class2)? {
                 return Ok(class2.clone());
             }
 
-            if class1.is_interface(env)? || class2.is_interface(env)? {
-                return env.lookup_class("java.lang.Object");
+            if class1.is_interface(cp)? || class2.is_interface(cp)? {
+                return cp.lookup_class("java.lang.Object");
             }
 
             let mut cls1 = class1.clone();
             while {
-                cls1 = match cls1.superclass(env)? {
+                cls1 = match cls1.superclass(cp)? {
                     Some(superclass) => superclass,
                     None => return Ok(cls1),
                 };
 
-                !cls1.is_assignable_from(env, class2)?
+                !cls1.is_assignable_from(cp, class2)?
             } {}
 
             Ok(cls1)
         }
 
-        let mut env = jni_env()?;
-        let mut class1 = env.lookup_class(class1)?;
-        let mut class2 = env.lookup_class(class2)?;
-        let mut common_superclass =
-            find_most_common_superclass(&mut env, &mut class1, &mut class2)?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let mut class1 = cp.lookup_class(class1)?;
+        let mut class2 = cp.lookup_class(class2)?;
+        let mut common_superclass = find_most_common_superclass(&mut cp, &mut class1, &mut class2)?;
 
-        assert_eq!(common_superclass.name(&mut env)?, common_superclass_name);
+        assert_eq!(common_superclass.name(&mut cp)?, common_superclass_name);
 
-        free_lookup(&mut env)
+        Ok(())
     }
 
     #[test]
-    #[serial]
     #[cfg_attr(
         not(any(jvm_v8, jvm_v11, jvm_v17, jvm_v21)),
         ignore = "No Java LTS version provided"
@@ -507,16 +488,16 @@ mod test {
             unreachable!()
         };
 
-        let mut env = jni_env()?;
-        let mut class = env.lookup_class("java.lang.Integer")?;
-        let mut interfaces = class.interfaces(&mut env)?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let mut class = cp.lookup_class("java.lang.Integer")?;
+        let mut interfaces = class.interfaces(&mut cp)?;
         let interface_names = interfaces
             .iter_mut()
-            .map(|interface| interface.name(&mut env))
+            .map(|interface| interface.name(&mut cp))
             .collect::<HierResult<Vec<_>>>()?;
 
         assert_eq!(interface_names, implemented_interfaces);
 
-        free_lookup(&mut env)
+        Ok(())
     }
 }

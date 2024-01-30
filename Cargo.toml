@@ -12,7 +12,7 @@ authors = ["ChAoS-UnItY (Kyle Lin) <minecraft.kyle.train@gmail.com>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-jni = { version = "0.21.1", features = ["invocation"] }
+jni = { version = "0.21.1" }
 graphviz-rust = { version = "0.7.0", optional = true }
 thiserror = { version = "1.0.56" }
 once_cell = { version = "1.19.0" }
@@ -21,8 +21,17 @@ paste = { version = "1.0" }
 phf = { version = "0.11.2", features = ["macros"] }
 
 [dev-dependencies]
-serial_test = "3.0.0"
 rstest = "0.18.2"
 
 [features]
+defaults = []
+invocation = ["jni/invocation"]
 graph = ["dep:graphviz-rust"]
+
+[[example]]
+name = "common_superclass"
+required-features = ["invocation"]
+
+[[example]]
+name = "interfaces"
+required-features = ["invocation"]

@@ -33,7 +33,7 @@ impl From<String> for JavaVersion {
     /// This conversion is compatible for "java.version" and "java.specification.version"
     /// poperties.
     fn from(value: String) -> Self {
-        let version_parts = value.split(".").collect::<Vec<_>>();
+        let version_parts = value.split('.').collect::<Vec<_>>();
 
         if version_parts[0] == "1" {
             // Versions before Java 9
@@ -72,9 +72,9 @@ impl From<String> for JavaVersion {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "invocation"))]
 mod test {
-    use crate::{errors::HierResult, jni_env, version::JavaVersion, HierExt};
+    use crate::{classpool::ClassPool, errors::HierResult, version::JavaVersion, HierExt};
 
     #[test]
     #[cfg_attr(
@@ -139,8 +139,8 @@ mod test {
             unreachable!()
         };
 
-        let mut env = jni_env()?;
-        let version = env.get_java_version()?;
+        let mut cp = ClassPool::from_permanent_env()?;
+        let version = cp.get_java_version()?;
 
         assert_eq!(current_jvm_version, version);
 
